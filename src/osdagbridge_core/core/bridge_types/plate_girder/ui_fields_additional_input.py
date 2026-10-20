@@ -337,7 +337,7 @@ _LANE_DETAILS_TAB_SCHEMA = {
     ],
 }
 
-from osdagbridge_desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
+
 
 TYPICAL_SECTION_SCHEMA = {
     "id": KEY_TS_TAB,
@@ -351,7 +351,6 @@ TYPICAL_SECTION_SCHEMA = {
                     {
                         "id":           KEY_TS_CAD_PREVIEW,
                         "type":         TYPE_DIRECT_WIDGET,
-                        "widget_class": CrossSectionCADWidget,
                         "widget_props": {
                             "scale_factor":         0.65,
                             "minimum_height":       200,
@@ -1183,8 +1182,8 @@ LOADING_TAB_SCHEMA = {
     ],
 }
 
-from osdagbridge_desktop.ui.dialogs.additional_input.drawings.support_conditions_cad import SupportCADWidget
-from osdagbridge_desktop.ui.dialogs.additional_input.drawings.support_detail_cad import SupportDetailCADWidget
+
+
 
 SUPPORT_CONDITIONS_SCHEMA = {
     "id":     KEY_SC_TAB,
@@ -1242,12 +1241,10 @@ SUPPORT_CONDITIONS_SCHEMA = {
                         {
                             "id":           KEY_SC_LEFT_CAD,
                             "type":         TYPE_DIRECT_WIDGET,
-                            "widget_class": SupportCADWidget,
                         },
                         {
                             "id":             KEY_SC_RIGHT_CAD,
                             "type":           TYPE_DIRECT_WIDGET,
-                            "widget_class":   SupportDetailCADWidget,
                         },
                     ]
                 },
@@ -1589,9 +1586,9 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
 }
 
 
-from osdagbridge_desktop.ui.dialogs.additional_input.drawings.cad_preview_widget import CadPreviewWidget
-from osdagbridge_desktop.ui.dialogs.additional_input.ui_builder._segment_table_widget import SegmentTableWidget
-from osdagbridge_desktop.ui.dialogs.additional_input.drawings.rolled_section_preview import RolledSectionPreview
+
+
+
 
 END_CONNECTORS = [
 
@@ -1746,7 +1743,6 @@ GIRDER_DETAILS_SCHEMA = {
                     "fields": [{
                         "id":           KEY_MP_GD_CAD_PREVIEW,
                         "type":         TYPE_DIRECT_WIDGET,
-                        "widget_class": CadPreviewWidget,
                     }]
                 },
             ],
@@ -1801,7 +1797,6 @@ GIRDER_DETAILS_SCHEMA = {
                     "fields": [{
                         "id":                KEY_MP_GD_SEGMENT_TABLE,
                         "type":              TYPE_DIRECT_WIDGET,
-                        "widget_class":      SegmentTableWidget,
                         "on_row_select":     "_on_segment_selected",
                         "on_data_changed":   "_on_segment_data_changed",
                     }]
@@ -2049,7 +2044,6 @@ GIRDER_DETAILS_SCHEMA = {
                     "fields": [{
                         "id":           KEY_MP_GD_SECTION_PREVIEW,
                         "type":         TYPE_DIRECT_WIDGET,
-                        "widget_class": RolledSectionPreview,
                     }]
                 },
             ],
@@ -2160,7 +2154,7 @@ GIRDER_DETAILS_SCHEMA = {
     ],
 }
 
-from osdagbridge_desktop.ui.dialogs.additional_input.drawings.stiffener_details_cad import StiffenerDetailsCad
+
 STIFFENER_DETAILS_SCHEMA = {
     "id": KEY_MP_SD_TAB,
     "layout": {
@@ -2180,7 +2174,6 @@ STIFFENER_DETAILS_SCHEMA = {
                     "fields": [{
                         "id":           KEY_SD_STIFFENER_DETAILS,
                         "type":         TYPE_DIRECT_WIDGET,
-                        "widget_class": StiffenerDetailsCad,
                     }]
                 },
             ],
@@ -2348,13 +2341,7 @@ STIFFENER_DETAILS_SCHEMA = {
     ],
 }
 
-from osdagbridge_desktop.ui.dialogs.additional_input.drawings.end_diaphragm_cad import (
-    CrossBracingLayoutCad,
-    EndDiaphragmBracingLayoutCad,
-    BracingSectionPreview,
-    TopChordSectionPreview,
-    BottomChordSectionPreview,
-)
+
 
 CROSS_BRACING_DETAILS_SCHEMA = {
     "id": KEY_MP_CB_TAB,
@@ -2501,7 +2488,6 @@ CROSS_BRACING_DETAILS_SCHEMA = {
                 {"fields": [{
                     "id":           "member_properties.cross_bracing_details.layout_cad",
                     "type":         TYPE_DIRECT_WIDGET,
-                    "widget_class": CrossBracingLayoutCad,
                 }]},
             ],
         },
@@ -2514,7 +2500,6 @@ CROSS_BRACING_DETAILS_SCHEMA = {
                 {"fields": [{
                     "id":           KEY_MP_CB_BRACING_PREVIEW,
                     "type":         TYPE_DIRECT_WIDGET,
-                    "widget_class": BracingSectionPreview,
                 }]},
             ],
         },
@@ -2528,7 +2513,6 @@ CROSS_BRACING_DETAILS_SCHEMA = {
                 {"fields": [{
                     "id":           KEY_MP_CB_TOP_CHORD_PREVIEW,
                     "type":         TYPE_DIRECT_WIDGET,
-                    "widget_class": TopChordSectionPreview,
                 }]},
             ],
         },
@@ -2542,7 +2526,6 @@ CROSS_BRACING_DETAILS_SCHEMA = {
                 {"fields": [{
                     "id":           KEY_MP_CB_BOTTOM_CHORD_PREVIEW,
                     "type":         TYPE_DIRECT_WIDGET,
-                    "widget_class": BottomChordSectionPreview,
                 }]},
             ],
         },
@@ -2762,7 +2745,6 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
                 {"fields": [{
                     "id": KEY_MP_ED_BRACING_LAYOUT_CAD,
                     "type": TYPE_DIRECT_WIDGET,
-                    "widget_class": EndDiaphragmBracingLayoutCad,
                 }]},
             ],
         },
@@ -2776,7 +2758,6 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
                 {"fields": [{
                     "id": KEY_MP_ED_BRACING_SECTION_PREVIEW,
                     "type": TYPE_DIRECT_WIDGET,
-                    "widget_class": BracingSectionPreview,
                 }]},
             ],
         },
@@ -2790,7 +2771,6 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
                 {"fields": [{
                     "id": KEY_MP_ED_TOP_CHORD_PREVIEW,
                     "type": TYPE_DIRECT_WIDGET,
-                    "widget_class": TopChordSectionPreview,
                 }]},
             ],
         },
@@ -2804,7 +2784,6 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
                 {"fields": [{
                     "id": KEY_MP_ED_BOTTOM_CHORD_PREVIEW,
                     "type": TYPE_DIRECT_WIDGET,
-                    "widget_class": BottomChordSectionPreview,
                 }]},
             ],
         },
@@ -2818,7 +2797,6 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
                 {"fields": [{
                     "id": KEY_MP_ED_ROLLED_PREVIEW,
                     "type": TYPE_DIRECT_WIDGET,
-                    "widget_class": RolledSectionPreview,
                 }]},
             ],
         },
@@ -2832,7 +2810,6 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
                 {"fields": [{
                     "id": KEY_MP_ED_WELDED_PREVIEW,
                     "type": TYPE_DIRECT_WIDGET,
-                    "widget_class": RolledSectionPreview,
                 }]},
             ],
         },
