@@ -721,6 +721,7 @@ KEY_MP_CB_TYPE                        = "member_properties.cross_bracing_details
 KEY_MP_CB_BRACING_CONNECTION          = "member_properties.cross_bracing_details.bracing_connection"
 KEY_MP_CB_BRACING_SECTION_TYPE        = "member_properties.cross_bracing_details.bracing_section_type"
 KEY_MP_CB_BRACING_SECTION_DESIGNATION = "member_properties.cross_bracing_details.bracing_section_designation"
+KEY_MP_CB_TYPE_CAD_PREVIEW            = "member_properties.cross_bracing_details.layout_cad"
 KEY_MP_CB_BRACING_PREVIEW              = "member_properties.cross_bracing_details.bracing_preview"
 KEY_MP_CB_TOP_CHORD                    = "member_properties.cross_bracing_details.top_chord"
 KEY_MP_CB_TOP_CHORD_SECTION_TYPE       = "member_properties.cross_bracing_details.top_chord_section_type"
