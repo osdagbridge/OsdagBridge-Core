@@ -2158,6 +2158,88 @@ class BridgeGrillageModel:
         return self.moving_fatigue_load_cases_list
 
     # ------------------------------------------------------------------
+    #   Special Vehicle (IRC:6-2017 Cl.204.5)
+    # ------------------------------------------------------------------
+
+    def add_sv_load_cases(self, model=None):
+        """
+        Create the static Special Vehicle load cases, one per transverse
+        position required by IRC:6-2017 Cl.204.5.3 / Fig. 6B.
+
+        The SV (Cl.204.5.1, 385 t prime mover + 20 axle trailer) is built by
+        ``ospgrillage``'s ``LoadModel(model_type="SV")`` and placed on the
+        carriageway centreline shifted by +300 mm and -300 mm, giving the load
+        cases ``"SV +300"`` and ``"SV -300"``.  Both are kept so whichever side
+        is worse can govern.
+
+        Per Cl.204.5.4 no other live load shares the SV carriageway, and no
+        dynamic impact or multi-lane reduction factor is applied, so each case
+        is registered with a load factor of 1.0.  The names deliberately do
+        not start with "case" so the governing-LL detection in
+        create_governing_ll_load_case() does not pick them up.
+
+        Currently handles Fig. 6B case 1 only (undivided carriageway, footpath
+        on both sides or none).  Other configurations create no SV cases.
+
+        Parameters
+        ----------
+        model : Grillage, optional
+            Target model; defaults to ``self.model``.
+
+        Returns
+        -------
+        list
+            The created static SV load cases (empty when the SV does not apply).
+        """
+        model = model or self.model
+        if model is None:
+            raise ValueError("Model not created yet.")
+
+        self.sv_load_cases_list = []
+        self.sv_vehicles_by_case = {}
+
+        layout = self.layout
+        if not layout.has_component("carriageway"):
+            print("Special Vehicle: median deck (Fig. 6B case 3) not handled yet; no SV cases created.")
+            return self.sv_load_cases_list
+
+        n_footpaths = sum(
+            layout.has_component(name) for name in ("footpath_left", "footpath_right")
+        )
+        footpath = {0: "none", 1: "single_sided", 2: "both_sides"}[n_footpaths]
+
+        placement = IRC6_2017.cl_204_5_3_sv_placement(
+            layout.get_component("carriageway").width,
+            include_median="no",
+            footpath=footpath,
+        )
+        if not placement.get("sv_applicable"):
+            print(f"Special Vehicle: not applicable — {placement.get('reason', '')}")
+            return self.sv_load_cases_list
+        if placement.get("case") != 1:
+            print(f"Special Vehicle: Fig. 6B case {placement.get('case')} not handled yet; no SV cases created.")
+            return self.sv_load_cases_list
+
+        eccentricity_m = abs(placement["eccentricity_mm"]) / 1000.0
+        (_cw_name, z_center), = self.carriageway_center_coordinates()
+
+        for sign, label in ((1, "+300"), (-1, "-300")):
+            lc_name = f"SV {label}"
+            lc = og.create_load_case(name=lc_name)
+
+            vehicle = og.create_load_model(model_type="SV").create()
+            vehicle.set_global_coord(og.Point(0.0, 0.0, z_center + sign * eccentricity_m))
+            lc.add_load(load=vehicle)
+            self.vehicle_type_map[id(vehicle)] = "SV"
+
+            model.add_load_case(lc, load_factor=1.0)
+
+            self.sv_load_cases_list.append(lc)
+            self.sv_vehicles_by_case[lc_name] = [vehicle]
+
+        return self.sv_load_cases_list
+
+    # ------------------------------------------------------------------
     #   Braking load (IRC:6-2017 Cl.211)
     # ------------------------------------------------------------------
 

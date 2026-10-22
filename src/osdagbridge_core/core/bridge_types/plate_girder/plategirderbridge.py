@@ -46,6 +46,7 @@ from osdagbridge_core.core.utils.common import (
     KEY_CARRIAGEWAY_WIDTH,
     KEY_INCLUDE_MEDIAN,
     KEY_FOOTPATH,
+    KEY_LL_IRC_CLASS_SV,
     KEY_TS_FOOTPATH_WIDTH,
     KEY_RAILING_WIDTH,
     KEY_SKEW_ANGLE,
@@ -1414,6 +1415,7 @@ class PlateGirderBridge:
           2. Moving vehicle load cases — moving paths for each vehicle
           3. Fatigue vehicle — IRC:6 Cl.204.6 truck on the carriageway centreline
           4. Moving fatigue vehicle — the fatigue truck traversing the span
+          5. Special Vehicle — IRC:6 Cl.204.5, only when Class SV is ticked
 
         The braking load (IRC:6 Cl.211) is not created here: it derives from
         whichever case turns out to govern, so it is built in
@@ -1432,6 +1434,11 @@ class PlateGirderBridge:
         bridge_logger.check_cancel()
 
         model.create_moving_fatigue_load_cases()
+        bridge_logger.check_cancel()
+
+        sv_flag = self.input_dict.get(KEY_LL_IRC_CLASS_SV)
+        if sv_flag is True or str(sv_flag).strip().lower() in ("1", "true", "yes", "checked"):
+            model.add_sv_load_cases()
 
     # ─────────────────────────────────────────────────────────────────────────
     # Wind loads — applied after dead and live loads, before analysis
