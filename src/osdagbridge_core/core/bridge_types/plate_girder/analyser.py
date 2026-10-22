@@ -2178,8 +2178,9 @@ class BridgeGrillageModel:
         not start with "case" so the governing-LL detection in
         create_governing_ll_load_case() does not pick them up.
 
-        Currently handles Fig. 6B case 1 only (undivided carriageway, footpath
-        on both sides or none).  Other configurations create no SV cases.
+        Handles Fig. 6B case 1 (undivided carriageway, footpath on both sides
+        or none) and case 2 (undivided carriageway, footpath on one side).
+        Median decks (case 3) create no SV cases yet.
 
         Parameters
         ----------
@@ -2216,7 +2217,7 @@ class BridgeGrillageModel:
         if not placement.get("sv_applicable"):
             print(f"Special Vehicle: not applicable — {placement.get('reason', '')}")
             return self.sv_load_cases_list
-        if placement.get("case") != 1:
+        if placement.get("case") not in (1, 2):
             print(f"Special Vehicle: Fig. 6B case {placement.get('case')} not handled yet; no SV cases created.")
             return self.sv_load_cases_list
 

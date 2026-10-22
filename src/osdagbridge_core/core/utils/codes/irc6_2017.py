@@ -1337,7 +1337,7 @@ class IRC6_2017:
         
         # Case 2: Multi-lane undivided, no median, footpath on single side
         # Unsymmetrical configuration - eccentricity = -300mm (towards footpath side)
-        if median_lower == 'no' and footpath_lower in ['single_sided', 'single', 'one_side']:
+        if median_lower == 'no' and footpath_lower in ['single_side', 'single_sided', 'single', 'one_side']:
             return {
                 'sv_applicable': True,
                 'case': 2,
