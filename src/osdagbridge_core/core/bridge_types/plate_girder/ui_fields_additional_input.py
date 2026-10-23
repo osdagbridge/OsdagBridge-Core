@@ -1,7 +1,7 @@
 # Main schema: ADDITIONAL_INPUTS_SCHEMA (bottom of file)
 
-from osdagbridge_core.core.utils.common import *
-from osdagbridge_core.core.bridge_types.plate_girder.initial_sizing import KEY_MAX_CAMBER_MM
+from osdagbridge.core.utils.common import *
+from osdagbridge.core.bridge_types.plate_girder.initial_sizing import KEY_MAX_CAMBER_MM
 
 
 # ── Typical Section Details Tab ───────────────────────────────────────────────
@@ -337,7 +337,7 @@ _LANE_DETAILS_TAB_SCHEMA = {
     ],
 }
 
-from osdagbridge_desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
+from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
 
 TYPICAL_SECTION_SCHEMA = {
     "id": KEY_TS_TAB,
@@ -1183,8 +1183,8 @@ LOADING_TAB_SCHEMA = {
     ],
 }
 
-from osdagbridge_desktop.ui.dialogs.additional_input.drawings.support_conditions_cad import SupportCADWidget
-from osdagbridge_desktop.ui.dialogs.additional_input.drawings.support_detail_cad import SupportDetailCADWidget
+from osdagbridge.desktop.ui.dialogs.additional_input.drawings.support_conditions_cad import SupportCADWidget
+from osdagbridge.desktop.ui.dialogs.additional_input.drawings.support_detail_cad import SupportDetailCADWidget
 
 SUPPORT_CONDITIONS_SCHEMA = {
     "id":     KEY_SC_TAB,
@@ -1589,9 +1589,9 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
 }
 
 
-from osdagbridge_desktop.ui.dialogs.additional_input.drawings.cad_preview_widget import CadPreviewWidget
-from osdagbridge_desktop.ui.dialogs.additional_input.ui_builder._segment_table_widget import SegmentTableWidget
-from osdagbridge_desktop.ui.dialogs.additional_input.drawings.rolled_section_preview import RolledSectionPreview
+from osdagbridge.desktop.ui.dialogs.additional_input.drawings.cad_preview_widget import CadPreviewWidget
+from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._segment_table_widget import SegmentTableWidget
+from osdagbridge.desktop.ui.dialogs.additional_input.drawings.rolled_section_preview import RolledSectionPreview
 
 END_CONNECTORS = [
 
@@ -2160,7 +2160,7 @@ GIRDER_DETAILS_SCHEMA = {
     ],
 }
 
-from osdagbridge_desktop.ui.dialogs.additional_input.drawings.stiffener_details_cad import StiffenerDetailsCad
+from osdagbridge.desktop.ui.dialogs.additional_input.drawings.stiffener_details_cad import StiffenerDetailsCad
 STIFFENER_DETAILS_SCHEMA = {
     "id": KEY_MP_SD_TAB,
     "layout": {
@@ -2348,7 +2348,7 @@ STIFFENER_DETAILS_SCHEMA = {
     ],
 }
 
-from osdagbridge_desktop.ui.dialogs.additional_input.drawings.end_diaphragm_cad import (
+from osdagbridge.desktop.ui.dialogs.additional_input.drawings.end_diaphragm_cad import (
     CrossBracingLayoutCad,
     EndDiaphragmBracingLayoutCad,
     BracingSectionPreview,
@@ -2408,7 +2408,6 @@ CROSS_BRACING_DETAILS_SCHEMA = {
                     "label":   "Type of Connection:",
                     "type":    TYPE_COMBOBOX,
                     "choices": ["Bolted", "Welded"],
-                    "enabled_choices": ["Bolted"],
                 }]},
 
                 # ── Bracing section ──────────────────────────────────────────
@@ -2588,7 +2587,7 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
                     "label": "Type:",
                     "type": TYPE_COMBOBOX,
                     "choices": VALUES_END_DIAPHRAGM_TYPE,
-                    "enabled_choices": ["Cross Bracing"],
+                    "enabled_choices": ["Cross Bracing", "Rolled Beam", "Welded Beam"],
                     "on_change": "_on_end_diaphragm_type_changed",
                 }]},
  
@@ -2608,7 +2607,6 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
                         "label": "Type of Connection:",
                         "type": TYPE_COMBOBOX,
                         "choices": ["Bolted", "Welded"],
-                        "enabled_choices": ["Bolted"],
                     }],
                 },
                 {
@@ -3242,28 +3240,30 @@ TRANSVERSE_MEMBER_DESIGN_SCHEMA = {
                     {"id": KEY_TD_ED_SECTION_INPUTS_MATERIAL_GRADE, "label": "Grade of Material:", "type": "line", "read_only": True, "group": None},
                     {"id": KEY_TD_ED_SECTION_INPUTS_TYPE,         "label": "Type:",                 "type": "line",     "read_only": True,  "group": None, "on_change": "_on_ed_type_changed"},
                     {"id": KEY_TD_ED_SECTION_INPUTS_NO_OF_CB,     "label": "No. of End-Diaphragms:",  "type": "line",     "read_only": True,  "group": None},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_CONNECTION_TYPE, "label": "Type of Connection:", "type": "line",    "read_only": True,  "group": None},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_CONNECTION_TYPE, "label": "Type of Connection:", "type": "line",    "read_only": True,  "group": ED_GROUP_CROSS_BRACING},
 
                     # ── Cross Bracing group ───────────────────────────────────────────────
-                    {"id": KEY_TD_ED_SECTION_INPUTS_BRACING_TYPE,                "label": "Type of Bracing:",               "type": "line", "read_only": True, "group": "crossbracing"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_TYPE,        "label": "Bracing Section Type:",          "type": "line", "read_only": True, "group": "crossbracing"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_DESIGNATION, "label": "Bracing Section Designation:",   "type": "line", "read_only": True, "group": "crossbracing"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_ENABLED,           "label": "Top Chord",                      "type": "checkbox", "default": True, "enabled": False, "group": "crossbracing"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,      "label": "Top Chord Section Type:",        "type": "line", "read_only": True, "group": "crossbracing"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION, "label": "Top Chord Section Designation:", "type": "line", "read_only": True, "group": "crossbracing"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_ENABLED,        "label": "Bottom Chord",                   "type": "checkbox", "default": True, "enabled": False, "group": "crossbracing"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,   "label": "Bottom Chord Section Type:",     "type": "line", "read_only": True, "group": "crossbracing"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION, "label": "Bottom Chord Section Designation:", "type": "line", "read_only": True, "group": "crossbracing"},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_BRACING_TYPE,                "label": "Type of Bracing:",               "type": "line", "read_only": True, "group": ED_GROUP_CROSS_BRACING},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_TYPE,        "label": "Bracing Section Type:",          "type": "line", "read_only": True, "group": ED_GROUP_CROSS_BRACING},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_DESIGNATION, "label": "Bracing Section Designation:",   "type": "line", "read_only": True, "group": ED_GROUP_CROSS_BRACING},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_ENABLED,           "label": "Top Chord",                      "type": "checkbox", "default": True, "enabled": False, "group": ED_GROUP_CROSS_BRACING},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,      "label": "Top Chord Section Type:",        "type": "line", "read_only": True, "group": ED_GROUP_CROSS_BRACING},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION, "label": "Top Chord Section Designation:", "type": "line", "read_only": True, "group": ED_GROUP_CROSS_BRACING},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_ENABLED,        "label": "Bottom Chord",                   "type": "checkbox", "default": True, "enabled": False, "group": ED_GROUP_CROSS_BRACING},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,   "label": "Bottom Chord Section Type:",     "type": "line", "read_only": True, "group": ED_GROUP_CROSS_BRACING},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION, "label": "Bottom Chord Section Designation:", "type": "line", "read_only": True, "group": ED_GROUP_CROSS_BRACING},
+
+                    # ── Rolled Beam group ─────────────────────────────────────────────────
+                    {"id": KEY_TD_ED_SECTION_INPUTS_IS_SECTION,              "label": "IS Section Designation:", "type": "line", "read_only": True, "group": ED_GROUP_ROLLED_BEAM},
 
                     # ── Welded Beam group ─────────────────────────────────────────────────
-                    {"id": KEY_TD_ED_SECTION_INPUTS_IS_SECTION,              "label": "IS Section Designation:", "type": "line", "read_only": True, "group": "welded_beam"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_SYMMETRY,                "label": "Symmetry:",               "type": "line", "read_only": True, "group": "welded_beam"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_TOTAL_DEPTH,             "label": "Total Depth (mm):",       "type": "line", "read_only": True, "group": "welded_beam"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_WEB_THICKNESS,           "label": "Web Thickness (mm):",     "type": "line", "read_only": True, "group": "welded_beam"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_TOP_FLANGE_WIDTH,        "label": "Top Flange Width (mm):",  "type": "line", "read_only": True, "group": "welded_beam"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_TOP_FLANGE_THICKNESS,    "label": "Top Flange Thickness (mm):", "type": "line", "read_only": True, "group": "welded_beam"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_BOTTOM_FLANGE_WIDTH,     "label": "Bottom Flange Width (mm):",  "type": "line", "read_only": True, "group": "welded_beam"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_BOTTOM_FLANGE_THICKNESS, "label": "Bottom Flange Thickness (mm):", "type": "line", "read_only": True, "group": "welded_beam"},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_SYMMETRY,                "label": "Symmetry:",               "type": "line", "read_only": True, "group": ED_GROUP_WELDED_BEAM},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_TOTAL_DEPTH,             "label": "Total Depth (mm):",       "type": "line", "read_only": True, "group": ED_GROUP_WELDED_BEAM},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_WEB_THICKNESS,           "label": "Web Thickness (mm):",     "type": "line", "read_only": True, "group": ED_GROUP_WELDED_BEAM},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_TOP_FLANGE_WIDTH,        "label": "Top Flange Width (mm):",  "type": "line", "read_only": True, "group": ED_GROUP_WELDED_BEAM},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_TOP_FLANGE_THICKNESS,    "label": "Top Flange Thickness (mm):", "type": "line", "read_only": True, "group": ED_GROUP_WELDED_BEAM},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_BOTTOM_FLANGE_WIDTH,     "label": "Bottom Flange Width (mm):",  "type": "line", "read_only": True, "group": ED_GROUP_WELDED_BEAM},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_BOTTOM_FLANGE_THICKNESS, "label": "Bottom Flange Thickness (mm):", "type": "line", "read_only": True, "group": ED_GROUP_WELDED_BEAM},
                 ],
             },
         },
