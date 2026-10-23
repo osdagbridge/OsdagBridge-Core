@@ -32,6 +32,9 @@ from OCC.Core.TopAbs import TopAbs_EDGE
 from osdagbridge_core.core.bridge_components.super_structure.plate_girder.builder import (
     build_plate_girder_geometry, GirderSegment
 )
+from osdagbridge_core.core.bridge_components.super_structure.rolled_beam.builder import (
+    build_rolled_girder_geometry
+)
 from osdagbridge_core.core.bridge_components.super_structure.deck.builder import (
     build_deck
 )
@@ -501,8 +504,24 @@ class PlateGirderCADGenerator:
             j = i + 1
             right_guided = ((j % 2) != (N % 2)) and (1 < j < N)
 
+            output_dict = self.output_dict or {}
+            g_section_type = output_dict.get(f"{KEY_MP_GIRDER_TYPE}.G{i + 1}.M1")
+            g_section_designation = output_dict.get(f"{KEY_MP_GIRDER_IS_SECTION}.G{i + 1}.M1")
+            g_rolled_dims = None
+            if str(g_section_type).strip() == VALUES_GIRDER_TYPE[1] and g_section_designation:
+                g_rolled_dims = get_is_section_dimensions(g_section_designation)
+
+            if g_rolled_dims is not None:
+                def build_girder(**kwargs):
+                    return build_rolled_girder_geometry(
+                        section_dims=g_rolled_dims,
+                        reference_top_z=self.girder_section_d / 2 + self.girder_section_tf,
+                        **kwargs
+                    )
+            else:
+                build_girder = build_plate_girder_geometry
                 
-            pg = build_plate_girder_geometry(
+            pg = build_girder(
                 D=self.girder_section_d,
                 tw=self.girder_section_tw,
                 length=self.span_length_L,
