@@ -169,9 +169,9 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
     format=plain
 }
 \usepackage{subcaption}
-\usepackage{multirow}
 \usepackage{colortbl}
 \usepackage{longtable}
+\usepackage[longtable]{multirow}
 \setlength{\LTleft}{\fill}
 \setlength{\LTright}{\fill}
 \usepackage{titlesec}
@@ -618,10 +618,10 @@ class ReportDataBridge:
         val = self._cb_osdag(pair, member, force_type).get("connection")
         return str(val) if val else ""
 
-    def get_cb_effective_length(self, member: str) -> str:
+    def get_cb_effective_length(self, pair: str, member: str) -> str:
         """Effective length KL in mm from geometry."""
         try:
-            geom = self.get_cb_geometry()
+            geom = self.get_cb_geometry().get(pair, {})
             if member == "diagonal":
                 L_m = geom.get("diagonal_length_m", 0)
             else:
