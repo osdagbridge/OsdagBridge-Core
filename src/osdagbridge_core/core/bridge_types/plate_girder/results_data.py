@@ -18,8 +18,8 @@ import openseespy.opensees as ops
 
 from .results_data_post_processing import post_process, FORCE_KEEP, DISP_KEEP
 from .initial_sizing import composite_section_properties
-from osdagbridge_core.core.utils.codes.irc22_2015 import IRC22_2014
-from osdagbridge_core.core.utils.common import (
+from osdagbridge.core.utils.codes.irc22_2015 import IRC22_2014
+from osdagbridge.core.utils.common import (
     KEY_COMP_I,
     KEY_SD_DEFL_LIVE_RAW,
     KEY_SD_DEFL_TOTAL_RAW,
@@ -778,8 +778,11 @@ def _extract_osdag_summary(result: dict) -> dict:
     return {
         "section":     _first("section_size.designation", "Optimum.Designation", "Section", "Designation"),
         "capacity_kN": _first("Member.tension_capacity", "Member.compression_capacity", "Member.capacity", "Design.Strength", "Capacity", as_float=True),
+        "moment_capacity_kNm": _first("Moment.Strength", as_float=True),
+        "shear_capacity_kN":   _first("Shear.Strength", as_float=True),
         "efficiency":  _first("Member.efficiency", "Optimum.UR", "Efficiency", "UR", as_float=True),
-        "slenderness": _first("Member.Slenderness", "Member.slenderness", "Slenderness", as_float=True),
+        "slenderness": _first("Member.Slenderness", "Member.slenderness", "Slenderness", "ESR", as_float=True),
+        "classification": _first("Optimum.SectionClassification", "SectionClassification"),
         "connection":  "Welded" if "Weld.Type" in result else "Bolted",
         "design_status": bool(status) if status is not None else None,
     }
