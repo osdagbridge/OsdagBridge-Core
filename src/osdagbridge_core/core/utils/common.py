@@ -695,6 +695,9 @@ KEY_MP_ED_BOTTOM_FLANGE_WIDTH           = "member_properties.end_diaphragm_detai
 KEY_MP_ED_TOP_FLANGE_THICKNESS          = "member_properties.end_diaphragm_details.top_flange_thickness"
 KEY_MP_ED_BOTTOM_FLANGE_THICKNESS       = "member_properties.end_diaphragm_details.bottom_flange_thickness"
 KEY_MP_ED_IS_SECTION                   = "member_properties.end_diaphragm_details.is_section"
+KEY_MP_ED_FLEXURE_TYPE                 = "member_properties.end_diaphragm_details.flexure_type"
+KEY_MP_ED_TORSIONAL_RESTRAINT          = "member_properties.end_diaphragm_details.torsional_restraint"
+KEY_MP_ED_WARPING_RESTRAINT             = "member_properties.end_diaphragm_details.warping_restraint"
 KEY_MP_ED_MASS                       = "member_properties.end_diaphragm_details.section_properties.mass"
 KEY_MP_ED_SECTIONAL_AREA             = "member_properties.end_diaphragm_details.section_properties.area"
 KEY_MP_ED_SECTIONAL_IY             = "member_properties.end_diaphragm_details.section_properties.iy"
@@ -1537,7 +1540,31 @@ VALUES_CROSS_BRACING_TYPE = [
     "K-Bracing",
     "X-Bracing",
 ]
-VALUES_END_DIAPHRAGM_TYPE = ["Cross Bracing", "Rolled Beam", "Welded Beam"]
+ED_TYPE_CROSS_BRACING = "Cross Bracing"
+ED_TYPE_ROLLED_BEAM = "Rolled Beam"
+ED_TYPE_WELDED_BEAM = "Welded Beam"
+VALUES_END_DIAPHRAGM_TYPE = [ED_TYPE_CROSS_BRACING, ED_TYPE_ROLLED_BEAM, ED_TYPE_WELDED_BEAM]
+
+VALUES_ED_FLEXURE_TYPE = [
+    "Major Laterally Supported",
+    "Minor Laterally Unsupported",
+    "Major Laterally Unsupported",
+]
+VALUES_ED_TORSIONAL_RESTRAINT = [
+    "Fully Restrained",
+    "Partially Restrained-support connection",
+    "Partially Restrained-bearing support",
+]
+VALUES_ED_WARPING_RESTRAINT = [
+    "Both flanges fully restrained",
+    "Compression flange fully restrained",
+    "Compression flange partially restrained",
+    "Warping not restrained in both flanges",
+]
+
+ED_GROUP_CROSS_BRACING = "crossbracing"
+ED_GROUP_ROLLED_BEAM = "rolled_beam"
+ED_GROUP_WELDED_BEAM = "welded_beam"
 VALUES_WEARING_COAT_MATERIAL = ["Concrete", "Bituminous", "Custom"]
 VALUES_RAILING_TYPE = ["IRC 5 - RCC Railing", "IRC 5 - Steel Railing", "Custom"]
 VALUES_CUSTOM_AXLE_TYPE = ["Single", "Bogie"]
@@ -1620,12 +1647,6 @@ def connectdb(table_name: str) -> list[str]:
     LookupError
         If the database is not found or the query fails.
     """
-    if not _DB_PATH.exists() or _DB_PATH.stat().st_size == 0:
-        try:
-            from osdagbridge_core.core.data.db_init import ensure_osdagbridge_db
-            ensure_osdagbridge_db()
-        except Exception:
-            pass
     if not _DB_PATH.exists():
         raise LookupError(f"Material database not found at {_DB_PATH} in get_grades")
 
@@ -1902,6 +1923,32 @@ def get_is_section_dimensions(designation: str) -> Optional[dict]:
         KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS: beam.flange_thickness_mm,
         KEY_MP_GIRDER_WEB_THICKNESS:           beam.web_thickness_mm,
     }
+
+def get_ed_rolled_section_properties(designation: str) -> dict:
+    """Return section properties for End Diaphragm rolled beam keyed by KEY_TD_ED_PROP_*.
+    Dimensions (H, B, tw, tF) are in meters; section properties are in cm-based units.
+    Raises ValueError if designation is empty or not found in girder_catalog.
+    """
+    beam = girder_catalog.get_beam_profile(designation)
+    if beam is None:
+        raise ValueError(f"Rolled beam section '{designation}' not found in girder catalog")
+    return {
+        KEY_TD_ED_PROP_H:   beam.depth_mm / 1000.0,
+        KEY_TD_ED_PROP_B:   beam.flange_width_mm / 1000.0,
+        KEY_TD_ED_PROP_TW:  beam.web_thickness_mm / 1000.0,
+        KEY_TD_ED_PROP_TF:  beam.flange_thickness_mm / 1000.0,
+        KEY_TD_ED_PROP_M:   beam.mass_per_meter_kg,
+        KEY_TD_ED_PROP_A:   beam.area_cm2,
+        KEY_TD_ED_PROP_IZ:  beam.moment_of_inertia_zz_cm4,
+        KEY_TD_ED_PROP_IV:  beam.moment_of_inertia_yy_cm4,
+        KEY_TD_ED_PROP_RZ:  beam.radius_of_gyration_z_cm,
+        KEY_TD_ED_PROP_RV:  beam.radius_of_gyration_y_cm,
+        KEY_TD_ED_PROP_ZZ:  beam.elastic_section_modulus_z_cm3,
+        KEY_TD_ED_PROP_ZV:  beam.elastic_section_modulus_y_cm3,
+        KEY_TD_ED_PROP_ZUZ: beam.plastic_section_modulus_z_cm3,
+        KEY_TD_ED_PROP_ZUV: beam.plastic_section_modulus_y_cm3,
+    }
+
 
 def get_angle_designation_list() -> list[str]:
     """Return sorted list of all angle designations (equal + unequal) from the database."""
