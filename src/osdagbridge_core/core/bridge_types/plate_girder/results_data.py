@@ -123,6 +123,7 @@ def classify_loadcases(loadcases) -> dict:
     dl_ll_cases       = []
     dl_only_cases     = []
     fatigue_cases     = []
+    sv_cases          = []
 
     for lc in all_lc:
         name       = str(lc)
@@ -134,6 +135,15 @@ def classify_loadcases(loadcases) -> dict:
         # to the dead-load bucket at the end of the loop.
         if name_lower.startswith("fatigue") or name_lower.startswith("moving fatigue"):
             fatigue_cases.append(lc)
+            continue
+
+        # Special Vehicle (IRC:6 Cl.204.5) — "SV +300", "SV -300", and on median
+        # decks "SV-L +300 | R: 2xClassA", ... Matched early: plain SV names hit
+        # none of the rules below and would fall through to the dead-load
+        # bucket, and the median names contain "classa"/"70r" and would be
+        # mistaken for Table 6A live-load cases.
+        if name_lower.startswith(("sv ", "sv-")):
+            sv_cases.append(lc)
             continue
 
         # Envelope pseudo-LCs injected by create_envelope_load_case()
@@ -213,6 +223,7 @@ def classify_loadcases(loadcases) -> dict:
         "dl_ll":                dl_ll_cases,
         "dl_only":              dl_only_cases,
         "fatigue":              fatigue_cases,
+        "sv":                   sv_cases,
     }
 
 
