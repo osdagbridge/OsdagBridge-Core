@@ -6,6 +6,7 @@ matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt
 
 from osdagbridge_core.core.utils.common import (
+    KEY_BOQ_END_DIAPHRAGM_WEIGHT_T,
     KEY_MP_GD_MEMBER_ID,
     KEY_MP_GD_SELECT_GIRDER,
     KEY_TS_NO_OF_GIRDERS,
@@ -51,6 +52,13 @@ def _render_value(source_dict, key, unit=""):
     if isinstance(val, float):
         val = f"{val:.2f}".rstrip("0").rstrip(".")
     return _tex(val) + unit
+
+
+def _render_mm(source_dict, key):
+    val = source_dict.get(key)
+    if val in ("", None):
+        return ""
+    return _render_value({key: float(val) * 1000}, key)
 
 
 def _table_layout(headers, rows, widths=None, align=None):
@@ -510,6 +518,8 @@ class ReportChartGenerator:
 
     def generate_utilization_ratio_charts(self, bridge):
         try:
+            from osdagbridge_core.core.reports.executive_summary import _governing_member
+
             output = bridge.output_dict or {}
             steel = self._max_dcr((output.get("design_results", {}) or {}).get("per_girder", {}))
             deck_rpt = output.get("deck_report_values", {}) or {}
@@ -535,7 +545,9 @@ class ReportChartGenerator:
                         if n > 0:
                             cb_values.append(n)
             cross_bracing = max(cb_values) if cb_values else self._max_dcr(output.get("crossbracing_design_results", {}))
-            end_diaphragm = self._max_dcr(output.get("end_diaphragm_design_results", {}))
+            end_diaphragm, _ = _governing_member(
+                output.get("end_diaphragm_design_results", {})
+            )
             return {"ur_summary": self._save_ur_chart(
                 "utilization_ratio_summary.pdf",
                 ["Steel Plate\nGirders", "Concrete\nDeck Slab", "Cross\nBracing", "End\nDiaphragms"],
@@ -548,11 +560,7 @@ class ReportChartGenerator:
             bracing = sum(self._number(quantities.get(key)) for key in (
                 "bracing_top_wt_total", "bracing_bot_wt_total", "bracing_diag_wt_total"
             ))
-            diaphragm = self._first_number(quantities, (
-                "end_diaphragm_wt_total", "end_diaphragms_wt_total",
-                "steel_end_diaphragm_wt_total", "steel_end_diaphragms_wt_total",
-                "diaphragm_wt_total", "diaphragms_wt_total",
-            ))
+            diaphragm = self._number(quantities.get(KEY_BOQ_END_DIAPHRAGM_WEIGHT_T))
             return {
                 "steel": self._save_bar_chart(
                     "material_steel_quantities.pdf",
