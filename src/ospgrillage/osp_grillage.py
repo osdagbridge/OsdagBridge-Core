@@ -1917,6 +1917,33 @@ class OspGrillage:
         A = calculate_area_given_vertices(p_list)
         return A
 
+    @staticmethod
+    def _scale_load_calls(calls, factor):
+        """Multiply every nodal force and moment in ``calls`` by ``factor``.
+
+        ``LoadCase.add_load(..., load_factor=)`` stores the factor on the load
+        group. Distribution itself only reads the load magnitude, so without
+        this step a combination such as 1.35 DL + 1.75 DW is analysed as 1.0.
+        The load-case factor passed to ``add_load_case`` is separate and is
+        applied later by the OpenSees time series.
+        """
+        scaled = []
+        for call in calls:
+            if (
+                isinstance(call, tuple)
+                and len(call) == 3
+                and call[0] == "load"
+                and isinstance(call[1], tuple)
+                and len(call[1]) >= 2
+            ):
+                node, *forces = call[1]
+                scaled.append(
+                    ("load", (node, *[float(v) * factor for v in forces]), call[2])
+                )
+            else:
+                scaled.append(call)
+        return scaled
+
     # ----------------------------------------------------------------------------------------------------------
     #  functions to add load case and load combination
     def _distribute_load_types_to_model(
@@ -1932,7 +1959,17 @@ class OspGrillage:
         # loop through each load object
         load_str = []
         for load_dict in load_groups:
-            load_obj = load_dict["load"]
+            if isinstance(load_dict, dict):
+                load_obj = load_dict["load"]
+                raw_factor = load_dict.get("factor", 1)
+                try:
+                    factor = 1.0 if raw_factor is None else float(raw_factor)
+                except (TypeError, ValueError):
+                    factor = 1.0
+            else:
+                load_obj = load_dict
+                factor = 1.0
+            start = len(load_str)
             # if compound load, distribute each individual load types within the compound load
             if isinstance(load_obj, CompoundLoad):
                 # load_obj is a Compound load class, start a nested loop through each load class within compound load
@@ -2007,6 +2044,8 @@ class OspGrillage:
                         )
                 elif isinstance(load_obj, PatchLoading):
                     load_str += self._assign_patch_load(load_obj)
+            if factor != 1.0:
+                load_str[start:] = self._scale_load_calls(load_str[start:], factor)
 
         return load_str
 
