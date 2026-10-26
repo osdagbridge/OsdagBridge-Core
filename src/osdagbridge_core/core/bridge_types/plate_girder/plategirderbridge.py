@@ -3500,9 +3500,35 @@ class PlateGirderBridge:
         Call this immediately after run_design_check() inside _run_dcr_checks().
         output_dict must still be mutable (i.e. before the MappingProxyType freeze).
         """
-        dr  = design_results          # alias: mm/MPa/kN from designer pipeline
-        inp = self.input_dict         # alias: SI (m, Pa) from initial sizing
-        out = self.output_dict        # must be mutable dict at this point
+        self._map_design_results(
+            design_results, self.input_dict, self.output_dict
+        )
+
+        girder_outputs = {}
+        for name, results in design_results.get("girder_results", {}).items():
+            inputs = dict(self.input_dict)
+            suffix = f".{name}.M1"
+            inputs.update({
+                key[:-len(suffix)]: value
+                for key, value in self.input_dict.items()
+                if isinstance(key, str) and key.endswith(suffix)
+            })
+
+            member = f"{name}M1"
+            stiffeners = self.input_dict.get("stiffener_by_member") or {}
+            inputs["stiffener_by_member"] = (
+                {member: stiffeners[member]} if member in stiffeners else {}
+            )
+
+            values = {}
+            self._map_design_results(dict(results, per_girder={}), inputs, values)
+            girder_outputs[name] = values
+
+        self.output_dict["girder_outputs"] = girder_outputs
+
+    def _map_design_results(self, design_results, inp, out):
+        """Populate the supplied dictionary using existing output mappings."""
+        dr = design_results
 
         # ── 1. Category URs — eight utilisation percent values ─────────────────
         cat_urs = dr.get("category_urs", {})

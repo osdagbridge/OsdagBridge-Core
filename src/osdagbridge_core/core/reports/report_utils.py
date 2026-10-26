@@ -15,6 +15,12 @@ _GROUPED_TABLE_PROBE = False
 _GROUPED_TABLE_BREAKS = set()
 
 
+
+def iter_girder_outputs(output_dict, girder_entries):
+    girder_outputs = output_dict.get("girder_outputs") or {}
+    for i, (label, _) in enumerate(girder_entries, start=1):
+        yield label, girder_outputs.get(f"G{i}") or {}
+
 def configure_grouped_table_breaks(probe=False, breaks=None):
     global _GROUPED_TABLE_PROBE, _GROUPED_TABLE_BREAKS
     _GROUPED_TABLE_PROBE = probe

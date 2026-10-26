@@ -3591,6 +3591,14 @@ def run_design_check(
         icon = {"PASS": "+", "WARN": "~", "FAIL": "X"}.get(g_engine.overall_status(), "?")
         print(f"  [{icon}] {g_name:<40} max_DCR={g_engine.max_dcr():.3f}  {g_engine.overall_status()}")
 
+    girder_results = {
+        name: _build_design_results(
+            per_girder_configs[name], per_girder_demands[name],
+            record["_capacity"], record["_engine"], "", name, {name: record}
+        )
+        for name, record in per_girder_results.items()
+    }
+
     # -- Step 3: Controlling girder = highest max DCR --
     ctrl_name = max(per_girder_results, key=lambda g: per_girder_results[g]["max_dcr"])
     ctrl      = per_girder_results[ctrl_name]
@@ -3615,6 +3623,17 @@ def run_design_check(
     print(f"  PIPELINE COMPLETE -- {ctrl_name}  Overall: {engine.overall_status()}")
     print("=" * 60)
 
+    design_results = _build_design_results(
+        config, demand, capacity, engine,
+        report_text, ctrl_name, per_girder_results
+    )
+    design_results["girder_results"] = girder_results
+
+    return report_text, engine, design_results
+
+
+def _build_design_results(config, demand, capacity, engine,
+                          report_text, ctrl_name, per_girder_results):
     # -- Structured results dict --
     _sec = config.section
     _mat = config.material
@@ -3878,4 +3897,4 @@ def run_design_check(
         KEY_SD_VERDICT              : collect_girder_verdict(per_girder_results),
     }
 
-    return report_text, engine, design_results
+    return design_results

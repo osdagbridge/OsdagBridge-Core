@@ -186,7 +186,7 @@ from osdagbridge_core.core.utils.common import (
 
 from osdagbridge_core.core.reports.report_utils import (
     _tex, _render_value, get_girder_entries,
-    render_report_table, render_grouped_report_table, _fig_embed
+    render_report_table, render_grouped_report_table, _fig_embed, iter_girder_outputs
 )
 
 if TYPE_CHECKING:
@@ -213,71 +213,88 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     deck_rpt = bridge.output_dict.get("deck_report_values", {}) or {}
 
     # Generate Table 5.1 rows (per-girder section properties)
-    t51_items = [
-        (r"Depth, D (mm)", _render_value(bridge.output_dict, KEY_SD_TOTAL_DEPTH)),
-        (r"Top Flange Width, $b_f$ (mm)", _render_value(bridge.output_dict, KEY_SD_TOP_FLANGE_WIDTH)),
-        (r"Bottom Flange Width, $b_f$ (mm)", _render_value(bridge.output_dict, KEY_SD_BOTTOM_FLANGE_WIDTH)),
-        (r"Top Flange Thickness, $t_f$ (mm)", _render_value(bridge.output_dict, KEY_SD_TOP_FLANGE_THICKNESS)),
-        (r"Bottom Flange Thickness, $t_f$ (mm)", _render_value(bridge.output_dict, KEY_SD_BOTTOM_FLANGE_THICKNESS)),
-        (r"Web Thickness, $t_w$ (mm)", _render_value(bridge.output_dict, KEY_SD_WEB_THICKNESS)),
-        (r"Gross Area, A (cm$^2$)", _render_value(bridge.output_dict, KEY_SD_SECTION_PROP_AREA)),
-        (r"Moment of Inertia, $I_z$ (cm$^4$)", _render_value(bridge.output_dict, KEY_SD_SECTION_PROP_IZ)),
-        (r"Elastic Section Modulus, $Z_{ez}$ (cm$^3$)", _render_value(bridge.output_dict, KEY_SD_SECTION_PROP_ZZ)),
-        (r"Plastic Section Modulus, $Z_{pz}$ (cm$^3$)", _render_value(bridge.output_dict, KEY_SD_SECTION_PROP_ZUZ)),
-        (r"Effective Slab Width, $b_{eff}$ (mm)", _render_value(bridge.output_dict, KEY_SD_EFFECTIVE_SLAB_WIDTH)),
-        (r"Transformed Composite $I_z$ (cm$^4$)", _render_value(bridge.output_dict, KEY_SD_COMPOSITE_IZ)),
-        (r"Depth to Plastic Neutral Axis (mm)", _render_value(bridge.output_dict, KEY_SD_PNA_DEPTH)),
-    ]
-    t51_groups = [(lbl, t51_items) for lbl, _ in girder_entries]
+    t51_groups = []
+    for lbl, girder_output in iter_girder_outputs(bridge.output_dict, girder_entries):
+
+        t51_items = [
+            [r"Depth, D (mm)",                               _render_value(girder_output, KEY_SD_TOTAL_DEPTH)],
+            [r"Top Flange Width, $b_f$ (mm)",                _render_value(girder_output, KEY_SD_TOP_FLANGE_WIDTH)],
+            [r"Bottom Flange Width, $b_f$ (mm)",             _render_value(girder_output, KEY_SD_BOTTOM_FLANGE_WIDTH)],
+            [r"Top Flange Thickness, $t_f$ (mm)",            _render_value(girder_output, KEY_SD_TOP_FLANGE_THICKNESS)],
+            [r"Bottom Flange Thickness, $t_f$ (mm)",         _render_value(girder_output, KEY_SD_BOTTOM_FLANGE_THICKNESS)],
+            [r"Web Thickness, $t_w$ (mm)",                   _render_value(girder_output, KEY_SD_WEB_THICKNESS)],
+            [r"Gross Area, A (cm$^2$)",                      _render_value(girder_output, KEY_SD_SECTION_PROP_AREA)],
+            [r"Moment of Inertia, $I_z$ (cm$^4$)",           _render_value(girder_output, KEY_SD_SECTION_PROP_IZ)],
+            [r"Elastic Section Modulus, $Z_{ez}$ (cm$^3$)", _render_value(girder_output, KEY_SD_SECTION_PROP_ZZ)],
+            [r"Plastic Section Modulus, $Z_{pz}$ (cm$^3$)", _render_value(girder_output, KEY_SD_SECTION_PROP_ZUZ)],
+            [r"Effective Slab Width, $b_{eff}$ (mm)",       _render_value(girder_output, KEY_SD_EFFECTIVE_SLAB_WIDTH)],
+            [r"Transformed Composite $I_z$ (cm$^4$)",       _render_value(girder_output, KEY_SD_COMPOSITE_IZ)],
+            [r"Depth to Plastic Neutral Axis (mm)",         _render_value(girder_output, KEY_SD_PNA_DEPTH)],
+        ]
+        t51_groups.append((lbl, t51_items))
 
     # Generate Table 5.2 rows
-    t52_items = [
-        ["Top Flange", _render_value(bridge.output_dict, KEY_SD_FLANGE_SLENDERNESS),
-         _render_value(bridge.output_dict, KEY_SD_FLANGE_CLASS_LIMIT), _render_value(bridge.output_dict, KEY_SD_CLASS_FLANGE)],
-        ["Web", _render_value(bridge.output_dict, KEY_SD_WEB_SLENDERNESS),
-         _render_value(bridge.output_dict, KEY_SD_WEB_CLASS_LIMIT), _render_value(bridge.output_dict, KEY_SD_CLASS_WEB)],
-        ["Overall Section", "---", "---", _render_value(bridge.output_dict, KEY_SD_SECTION_CLASS)],
-    ]
-    t52_groups = [(lbl, t52_items) for lbl, _ in girder_entries]
+    t52_groups = []
+    for lbl, girder_output in iter_girder_outputs(bridge.output_dict, girder_entries):
+
+        t52_items = [
+            ["Top Flange",
+             _render_value(girder_output, KEY_SD_FLANGE_SLENDERNESS),
+             _render_value(girder_output, KEY_SD_FLANGE_CLASS_LIMIT),
+             _render_value(girder_output, KEY_SD_CLASS_FLANGE)],
+            ["Web",
+             _render_value(girder_output, KEY_SD_WEB_SLENDERNESS),
+             _render_value(girder_output, KEY_SD_WEB_CLASS_LIMIT),
+             _render_value(girder_output, KEY_SD_CLASS_WEB)],
+            ["Overall Section", "---", "---",
+             _render_value(girder_output, KEY_SD_SECTION_CLASS)],
+        ]
+        t52_groups.append((lbl, t52_items))
 
     # Generate Table 5.3 rows
     # Flexure UR is stored as a percent (cat_urs × 100); show as a ratio (÷100,
     # 2 dp) and PASS when ≤ 1.0.
-    try:
-        _flex_ur = float(bridge.output_dict.get(KEY_UTIL_FLEXURE)) / 100.0
-        _flex_ur_str = f"{_flex_ur:.2f}"
-        _flex_status = "PASS" if _flex_ur <= 1.0 else r"\textcolor{red}{FAIL}"
-    except (TypeError, ValueError):
-        _flex_ur_str = ""
-        _flex_status = "---"
-    t53_items = [
-        [r"Applied Moment, $M_u$", "Governing LC (ULS)", _render_value(bridge.output_dict, KEY_SD_MU_APPLIED, " kN-m"), "---"],
-        [r"Design Moment Capacity, $M_d$", "IRC 22 Cl. 603.3.1", _render_value(bridge.output_dict, KEY_SD_MD_CAPACITY, " kN-m"), "---"],
-        [r"Utilization Ratio, $M_u / M_d$", r"$M_u / M_d$", _flex_ur_str, _flex_status],
-    ]
-    t53_groups = [(lbl, t53_items) for lbl, _ in girder_entries]
+    t53_groups = []
+    for lbl, girder_output in iter_girder_outputs(bridge.output_dict, girder_entries):
+
+        try:
+            _flex_ur = float(girder_output.get(KEY_UTIL_FLEXURE)) / 100.0
+            _flex_ur_str = f"{_flex_ur:.2f}"
+            _flex_status = "PASS" if _flex_ur <= 1.0 else r"\textcolor{red}{FAIL}"
+        except (TypeError, ValueError):
+            _flex_ur_str, _flex_status = "", "---"
+
+        t53_items = [
+            [r"Applied Moment, $M_u$", "Governing LC (ULS)", _render_value(girder_output, KEY_SD_MU_APPLIED, " kN-m"), "---"],
+            [r"Design Moment Capacity, $M_d$", "IRC 22 Cl. 603.3.1", _render_value(girder_output, KEY_SD_MD_CAPACITY, " kN-m"), "---"],
+            [r"Utilization Ratio, $M_u / M_d$", r"$M_u / M_d$", _flex_ur_str, _flex_status],
+        ]
+        t53_groups.append((lbl, t53_items))
 
     # Generate Table 5.4 rows
     # Shear UR is stored as a percent (cat_urs × 100); show as a ratio (÷100,
     # 2 dp) and PASS when ≤ 1.0.
-    try:
-        _shear_ur = float(bridge.output_dict.get(KEY_UTIL_SHEAR)) / 100.0
-        _shear_ur_str = f"{_shear_ur:.2f}"
-        _shear_status = "PASS" if _shear_ur <= 1.0 else r"\textcolor{red}{FAIL}"
-    except (TypeError, ValueError):
-        _shear_ur_str = ""
-        _shear_status = "---"
-    t54_items = [
-        [r"Applied Shear, $V_u$", "Governing LC (ULS)", _render_value(bridge.output_dict, KEY_SD_SHEAR_VU, " kN"), "---"],
-        [r"Shear Area, $A_v$", r"$d_w \times t_w$", _render_value(bridge.output_dict, KEY_SD_SHEAR_AV, " mm$^2$"), "---"],
-        ["Panel Aspect Ratio, c/d", "---", _render_value(bridge.output_dict, KEY_SD_PANEL_CD), "---"],
-        [r"Shear Buckling Coefficient, $k_v$", "IS 800 Cl. 8.4.2.2", _render_value(bridge.output_dict, KEY_SD_SHEAR_KV), "---"],
-        [r"Web Slenderness, $\lambda_w$", r"$\sqrt{f_{yw}/(\sqrt{3}\,\tau_{cr})}$", _render_value(bridge.output_dict, KEY_SD_SHEAR_LAMBDA_W), "---"],
-        [r"Design Shear Stress, $\tau_b$", "IRC 22 Cl. 603.3.3.2", _render_value(bridge.output_dict, KEY_SD_SHEAR_TAU_B, " MPa"), "---"],
-        [r"Shear Buckling Resistance, $V_{cr}$", r"$A_v \times \tau_b$", _render_value(bridge.output_dict, KEY_SD_SHEAR_VCR, " kN"), "---"],
-        [r"Utilization Ratio, $V_u / V_d$", r"$V_u / V_d$", _shear_ur_str, _shear_status],
-    ]
-    t54_groups = [(lbl, t54_items) for lbl, _ in girder_entries]
+    t54_groups = []
+    for lbl, girder_output in iter_girder_outputs(bridge.output_dict, girder_entries):
+
+        try:
+            _shear_ur = float(girder_output.get(KEY_UTIL_SHEAR)) / 100.0
+            _shear_ur_str = f"{_shear_ur:.2f}"
+            _shear_status = "PASS" if _shear_ur <= 1.0 else r"\textcolor{red}{FAIL}"
+        except (TypeError, ValueError):
+            _shear_ur_str, _shear_status = "", "---"
+
+        t54_items = [
+            [r"Applied Shear, $V_u$", "Governing LC (ULS)", _render_value(girder_output, KEY_SD_SHEAR_VU, " kN"), "---"],
+            [r"Shear Area, $A_v$", r"$d_w \times t_w$", _render_value(girder_output, KEY_SD_SHEAR_AV, " mm$^2$"), "---"],
+            ["Panel Aspect Ratio, c/d", "---", _render_value(girder_output, KEY_SD_PANEL_CD), "---"],
+            [r"Shear Buckling Coefficient, $k_v$", "IS 800 Cl. 8.4.2.2", _render_value(girder_output, KEY_SD_SHEAR_KV), "---"],
+            [r"Web Slenderness, $\lambda_w$", r"$\sqrt{f_{yw}/(\sqrt{3}\,\tau_{cr})}$", _render_value(girder_output, KEY_SD_SHEAR_LAMBDA_W), "---"],
+            [r"Design Shear Stress, $\tau_b$", "IRC 22 Cl. 603.3.3.2", _render_value(girder_output, KEY_SD_SHEAR_TAU_B, " MPa"), "---"],
+            [r"Shear Buckling Resistance, $V_{cr}$", r"$A_v \times \tau_b$", _render_value(girder_output, KEY_SD_SHEAR_VCR, " kN"), "---"],
+            [r"Utilization Ratio, $V_u / V_d$", r"$V_u / V_d$", _shear_ur_str, _shear_status],
+        ]
+        t54_groups.append((lbl, t54_items))
 
     # Generate Table 5.5 rows
     # Interaction DCRs use the engine bands: PASS <0.90, WARN <1.00, FAIL ≥1.00.
@@ -288,97 +305,115 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
             return "WARN"
         return r"\textcolor{red}{FAIL}"
     # M-V interaction UR stored as percent → show ratio (2 dp).
-    try:
-        _mv_ur = float(bridge.output_dict.get(KEY_UTIL_INTERACTION)) / 100.0
-        _mv_ur_str = f"{_mv_ur:.2f}"
-        _mv_status = _interaction_status(_mv_ur)
-    except (TypeError, ValueError):
-        _mv_ur_str = ""
-        _mv_status = "---"
-    # M-N interaction: None → no axial load → N/A.
-    _mn_r  = bridge.output_dict.get(KEY_SD_MN_RATIO)
-    _mn_ax = bridge.output_dict.get(KEY_SD_MN_AXIAL)
-    _mn_mo = bridge.output_dict.get(KEY_SD_MN_MOMENT)
-    if _mn_r is None or _mn_ax is None or _mn_mo is None:
-        _mn_cond = _mn_val = _mn_status = "N/A"
-    else:
-        _mn_cond   = f"{_mn_ax:.2f} + {_mn_mo:.2f} = {_mn_r:.3f}"
-        _mn_val    = f"{_mn_r:.3f}"
-        _mn_status = _interaction_status(_mn_r)
-    t55_items = [
-        ["High Shear Condition?", r"$V_u > 0.6\,V_d$", _render_value(bridge.output_dict, KEY_SD_HIGH_SHEAR), "---"],
-        [r"Reduced Moment Capacity, $M_{dv}$", "IRC 22 Cl. 603.3.3.3", _render_value(bridge.output_dict, KEY_SD_MDV, " kN-m"), "---"],
-        [r"Interaction Check: $M_u \leq M_{dv}$", "---", _mv_ur_str, _mv_status],
-        [r"Interaction Check: $N_u/N_{Rd} + M_u/M_{dv} \leq 1.0$", _mn_cond, _mn_val, _mn_status],
-    ]
-    t55_groups = [(lbl, t55_items) for lbl, _ in girder_entries]
+    t55_groups = []
+    for lbl, girder_output in iter_girder_outputs(bridge.output_dict, girder_entries):
+
+        # M-V interaction UR stored as percent → show ratio (2 dp).
+        try:
+            _mv_ur = float(girder_output.get(KEY_UTIL_INTERACTION)) / 100.0
+            _mv_ur_str = f"{_mv_ur:.2f}"
+            _mv_status = _interaction_status(_mv_ur)
+        except (TypeError, ValueError):
+            _mv_ur_str = ""
+            _mv_status = "---"
+
+        # M-N interaction: None → no axial load → N/A.
+        _mn_r = girder_output.get(KEY_SD_MN_RATIO)
+        _mn_ax = girder_output.get(KEY_SD_MN_AXIAL)
+        _mn_mo = girder_output.get(KEY_SD_MN_MOMENT)
+        if _mn_r is None or _mn_ax is None or _mn_mo is None:
+            _mn_cond = _mn_val = _mn_status = "N/A"
+        else:
+            _mn_cond = f"{_mn_ax:.2f} + {_mn_mo:.2f} = {_mn_r:.3f}"
+            _mn_val = f"{_mn_r:.3f}"
+            _mn_status = _interaction_status(_mn_r)
+
+        t55_items = [
+            ["High Shear Condition?", r"$V_u > 0.6\,V_d$", _render_value(girder_output, KEY_SD_HIGH_SHEAR), "---"],
+            [r"Reduced Moment Capacity, $M_{dv}$", "IRC 22 Cl. 603.3.3.3", _render_value(girder_output, KEY_SD_MDV, " kN-m"), "---"],
+            [r"Interaction Check: $M_u \leq M_{dv}$", "---", _mv_ur_str, _mv_status],
+            [r"Interaction Check: $N_u/N_{Rd} + M_u/M_{dv} \leq 1.0$", _mn_cond, _mn_val, _mn_status],
+        ]
+        t55_groups.append((lbl, t55_items))
 
     # Generate Table 5.6 rows
     # LTB UR stored as percent → show ratio (2 dp); engine bands via _interaction_status.
-    try:
-        _ltb_ur = float(bridge.output_dict.get(KEY_UTIL_LTB)) / 100.0
-        _ltb_ur_str = f"{_ltb_ur:.2f}"
-        _ltb_status = _interaction_status(_ltb_ur)
-    except (TypeError, ValueError):
-        _ltb_ur_str = ""
-        _ltb_status = "---"
-
     def _render_scaled(source_dict, key, scale, nd, unit=""):
         v = source_dict.get(key)
         if v in ("", None):
             return ""
         return f"{float(v) * scale:.{nd}f}" + unit
 
-    _iy_cm4_str = _render_scaled(bridge.output_dict, KEY_SD_SECTION_PROP_IV, 1e8, 1, " cm$^4$")
-    _it_cm4_str = _render_scaled(bridge.output_dict, KEY_SD_SECTION_PROP_IT, 1e8, 1, " cm$^4$")
-    _iw_cm6_str = _render_scaled(bridge.output_dict, KEY_SD_SECTION_PROP_IW, 1e12, 3, " cm$^6$")
     _g_mpa_str  = _render_scaled(bridge.input_dict,  KEY_MATERIAL_GIRDER_G, 1000.0, 1, " MPa")
     _e_mpa_str  = _render_scaled(bridge.input_dict,  KEY_MATERIAL_GIRDER_E, 1000.0, 1, " MPa, ")
 
-    t56_items = [
-        [r"Effective Unbraced Length, $L_{LT}$", r"$\min(s_{cb},\,L_{span})$", _render_value(bridge.output_dict, KEY_SD_LTB_LLT, " m"), "---"],
-        [r"Minor-axis M.I., $I_y$", r"$\sum t\,b^3/12$", _iy_cm4_str, "---"],
-        [r"Torsional Constant, $J$", r"$\sum b\,t^3/3$", _it_cm4_str, "---"],
-        [r"Warping Constant, $I_w$", r"$\dfrac{I_{y,tf}\,I_{y,bf}}{I_{y,tf}+I_{y,bf}}\,h_w^2$", _iw_cm6_str, "---"],
-        [r"Elastic / Shear Modulus, $E$, $G$", "Material constants", _e_mpa_str + _g_mpa_str, "---"],
-        [r"Design Bending Strength, $M_p$", "IS 800 Cl. 8.2.1.2", _render_value(bridge.output_dict, KEY_SD_LTB_MP, " kN-m"), "---"],
-        [r"Elastic Critical Moment, $M_{cr}$", "IRC 22 Cl. 603.3.3.1", _render_value(bridge.output_dict, KEY_SD_LTB_MCR, " kN-m"), "---"],
-        [r"Non-dim. Slenderness, $\bar{\lambda}_{LT}$", r"$\sqrt{M_p / M_{cr}}$", _render_value(bridge.output_dict, KEY_SD_LTB_LAMBDA), "---"],
-        [r"LTB Reduction Factor, $\chi_{LT}$", "IS 800 Cl. 8.2.2", _render_value(bridge.output_dict, KEY_SD_LTB_CHI), "---"],
-        [r"LTB Resistance, $M_b$", r"$\chi_{LT}\,M_p$", _render_value(bridge.output_dict, KEY_SD_LTB_MB, " kN-m"), "---"],
-        [r"$M_u \leq M_b$", r"$M_u / M_b$", _ltb_ur_str, _ltb_status],
-    ]
-    t56_groups = [(lbl, t56_items) for lbl, _ in girder_entries]
+    t56_groups = []
+    for lbl, girder_output in iter_girder_outputs(bridge.output_dict, girder_entries):
+
+        try:
+            _ltb_ur = float(girder_output.get(KEY_UTIL_LTB)) / 100.0
+            _ltb_ur_str = f"{_ltb_ur:.2f}"
+            _ltb_status = _interaction_status(_ltb_ur)
+        except (TypeError, ValueError):
+            _ltb_ur_str = ""
+            _ltb_status = "---"
+
+        _iy_cm4_str = _render_scaled(girder_output, KEY_SD_SECTION_PROP_IV, 1e8, 1, " cm$^4$")
+        _it_cm4_str = _render_scaled(girder_output, KEY_SD_SECTION_PROP_IT, 1e8, 1, " cm$^4$")
+        _iw_cm6_str = _render_scaled(girder_output, KEY_SD_SECTION_PROP_IW, 1e12, 3, " cm$^6$")
+
+        t56_items = [
+            [r"Effective Unbraced Length, $L_{LT}$", r"$\min(s_{cb},\,L_{span})$", _render_value(girder_output, KEY_SD_LTB_LLT, " m"), "---"],
+            [r"Minor-axis M.I., $I_y$", r"$\sum t\,b^3/12$", _iy_cm4_str, "---"],
+            [r"Torsional Constant, $J$", r"$\sum b\,t^3/3$", _it_cm4_str, "---"],
+            [r"Warping Constant, $I_w$", r"$\dfrac{I_{y,tf}\,I_{y,bf}}{I_{y,tf}+I_{y,bf}}\,h_w^2$", _iw_cm6_str, "---"],
+            [r"Elastic / Shear Modulus, $E$, $G$", "Material constants", _e_mpa_str + _g_mpa_str, "---"],
+            [r"Design Bending Strength, $M_p$", "IS 800 Cl. 8.2.1.2", _render_value(girder_output, KEY_SD_LTB_MP, " kN-m"), "---"],
+            [r"Elastic Critical Moment, $M_{cr}$", "IRC 22 Cl. 603.3.3.1", _render_value(girder_output, KEY_SD_LTB_MCR, " kN-m"), "---"],
+            [r"Non-dim. Slenderness, $\bar{\lambda}_{LT}$", r"$\sqrt{M_p / M_{cr}}$", _render_value(girder_output, KEY_SD_LTB_LAMBDA), "---"],
+            [r"LTB Reduction Factor, $\chi_{LT}$", "IS 800 Cl. 8.2.2", _render_value(girder_output, KEY_SD_LTB_CHI), "---"],
+            [r"LTB Resistance, $M_b$", r"$\chi_{LT}\,M_p$", _render_value(girder_output, KEY_SD_LTB_MB, " kN-m"), "---"],
+            [r"$M_u \leq M_b$", r"$M_u / M_b$", _ltb_ur_str, _ltb_status],
+        ]
+        t56_groups.append((lbl, t56_items))
 
     # Generate Table 5.7 rows
-    t57_items = [
-        ["Shear Buckling Design Method", str(_render_value(bridge.output_dict, KEY_SD_STIFF_METHOD)).replace("_", " ").title()],
-        ["Intermediate Stiffener Thickness (mm)", _render_value(bridge.output_dict, KEY_SD_STIFF_INT_THICK)],
-        ["Intermediate Stiffener Spacing (mm)", _render_value(bridge.output_dict, KEY_SD_STIFF_INT_SPACING)],
-        ["End Panel Stiffener Thickness (mm)", _render_value(bridge.output_dict, KEY_SD_STIFF_END_THICK)],
-        ["No. of End Panel Stiffeners", _render_value(bridge.output_dict, KEY_SD_STIFF_END_COUNT)],
-        ["Longitudinal Stiffeners", _render_value(bridge.output_dict, KEY_SD_STIFF_LONG)],
-    ]
-    t57_groups = [(lbl, t57_items) for lbl, _ in girder_entries]
+    t57_groups = []
+    for lbl, girder_output in iter_girder_outputs(bridge.output_dict, girder_entries):
+
+        t57_items = [
+            ["Shear Buckling Design Method", str(_render_value(girder_output, KEY_SD_STIFF_METHOD)).replace("_", " ").title()],
+            ["Intermediate Stiffener Thickness (mm)", _render_value(girder_output, KEY_SD_STIFF_INT_THICK)],
+            ["Intermediate Stiffener Spacing (mm)", _render_value(girder_output, KEY_SD_STIFF_INT_SPACING)],
+            ["End Panel Stiffener Thickness (mm)", _render_value(girder_output, KEY_SD_STIFF_END_THICK)],
+            ["No. of End Panel Stiffeners", _render_value(girder_output, KEY_SD_STIFF_END_COUNT)],
+            ["Longitudinal Stiffeners", _render_value(girder_output, KEY_SD_STIFF_LONG)],
+        ]
+        t57_groups.append((lbl, t57_items))
 
     # Generate table - intermediate stiffener checks (IS 800 CL. 8.7.1.2)
     # Status: PASS when Provided ≥ Required.
+    # Generate Table 5.8 rows
     def _ge_status(provided, required):
         try:
             return "PASS" if float(provided) >= float(required) else r"\textcolor{red}{FAIL}"
         except (TypeError, ValueError):
             return "---"
-    _iys_status = _ge_status(bridge.output_dict.get(KEY_SD_IS_IYS_PROV),
-                             bridge.output_dict.get(KEY_SD_IS_IYS_MIN))
-    _fqd_status = _ge_status(bridge.output_dict.get(KEY_SD_IS_FQD),
-                             bridge.output_dict.get(KEY_SD_IS_FQ))
-    t58_items = [
-        [r"Min. Moment of Inertia, $I_s$", _render_value(bridge.output_dict, KEY_SD_IS_IYS_MIN, " mm$^4$"),
-         _render_value(bridge.output_dict, KEY_SD_IS_IYS_PROV, " mm$^4$"), _iys_status],
-        [r"Buckling Resistance, $F_{qd} \geq F_q$", _render_value(bridge.output_dict, KEY_SD_IS_FQ, " kN"),
-         _render_value(bridge.output_dict, KEY_SD_IS_FQD, " kN"), _fqd_status],
-    ]
-    t58_groups = [(lbl, t58_items) for lbl, _ in girder_entries]
+    t58_groups = []
+    for lbl, girder_output in iter_girder_outputs(bridge.output_dict, girder_entries):
+
+        _iys_status = _ge_status(girder_output.get(KEY_SD_IS_IYS_PROV),
+                                girder_output.get(KEY_SD_IS_IYS_MIN))
+        _fqd_status = _ge_status(girder_output.get(KEY_SD_IS_FQD),
+                                girder_output.get(KEY_SD_IS_FQ))
+
+        t58_items = [
+            [r"Min. Moment of Inertia, $I_s$", _render_value(girder_output, KEY_SD_IS_IYS_MIN, " mm$^4$"),
+             _render_value(girder_output, KEY_SD_IS_IYS_PROV, " mm$^4$"), _iys_status],
+            [r"Buckling Resistance, $F_{qd} \geq F_q$", _render_value(girder_output, KEY_SD_IS_FQ, " kN"),
+             _render_value(girder_output, KEY_SD_IS_FQD, " kN"), _fqd_status],
+        ]
+        t58_groups.append((lbl, t58_items))
 
     # (Intermediate Stiffener Checks) is a verification table — it only
     # has data when the user supplied stiffener sizes (Design Type = Custom). In
@@ -399,27 +434,33 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     # End panel == bearing stiffener for this bridge. Each resistance vs reaction R.
     # Resistances are 0 in guidance-only mode (optimized w/o outstand) → N/A until
     # the designer defaults outstand to (bf−tw)/2.
-    _bs_r = bridge.output_dict.get(KEY_SD_BS_R)
-    def _bs_check(resist_key):
-        prov = bridge.output_dict.get(resist_key)
+    
+    def _bs_check(girder_output, resist_key):
+        prov = girder_output.get(resist_key)
+        _bs_r = girder_output.get(KEY_SD_BS_R)
         # Resistance not computed (guidance mode) → N/A.
         if prov is None or float(prov) <= 0.0 or _bs_r is None:
             return ("N/A", "N/A", "N/A")
-        req_s  = f"{_bs_r} kN"
+        req_s = f"{_bs_r} kN"
         prov_s = f"{prov} kN"
         status = "PASS" if float(prov) >= float(_bs_r) else r"\textcolor{red}{FAIL}"
         return (req_s, prov_s, status)
-    _wb_req, _wb_prov, _wb_st = _bs_check(KEY_SD_BS_FCDW_WB)
-    _lc_req, _lc_prov, _lc_st = _bs_check(KEY_SD_BS_FCDW_LC)
-    _ps_req, _ps_prov, _ps_st = _bs_check(KEY_SD_BS_FPSD)
-    _cb_req, _cb_prov, _cb_st = _bs_check(KEY_SD_BS_FCD)
-    t59_items = [
-        ["Web Buckling Resistance", _wb_req, _wb_prov, _wb_st],
-        ["Local Crushing Resistance", _lc_req, _lc_prov, _lc_st],
-        ["Bearing Capacity", _ps_req, _ps_prov, _ps_st],
-        ["Column Buckling Resistance", _cb_req, _cb_prov, _cb_st],
-    ]
-    t59_groups = [(lbl, t59_items) for lbl, _ in girder_entries]
+
+    t59_groups = []
+    for lbl, girder_output in iter_girder_outputs(bridge.output_dict, girder_entries):
+
+        _wb_req, _wb_prov, _wb_st = _bs_check(girder_output, KEY_SD_BS_FCDW_WB)
+        _lc_req, _lc_prov, _lc_st = _bs_check(girder_output, KEY_SD_BS_FCDW_LC)
+        _ps_req, _ps_prov, _ps_st = _bs_check(girder_output, KEY_SD_BS_FPSD)
+        _cb_req, _cb_prov, _cb_st = _bs_check(girder_output, KEY_SD_BS_FCD)
+
+        t59_items = [
+            ["Web Buckling Resistance", _wb_req, _wb_prov, _wb_st],
+            ["Local Crushing Resistance", _lc_req, _lc_prov, _lc_st],
+            ["Bearing Capacity", _ps_req, _ps_prov, _ps_st],
+            ["Column Buckling Resistance", _cb_req, _cb_prov, _cb_st],
+        ]
+        t59_groups.append((lbl, t59_items))
 
     # ── Table 5.10: Serviceability — Deflection Checks (IRC 22 Cl. 604.3.2) ──────
     # Allowable limits: span-dependent, same for all girders, from output_dict.
@@ -492,8 +533,16 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     _steel_alw_str = _mpa(_steel_allow)
     _steel_status  = _stress_status(_steel_sigma, _steel_allow)
 
-    t511_rows = [[lbl, r"Structural Steel ($0.9\,f_y$)", _steel_alw_str, _steel_sig_str, _steel_status]
-                 for lbl, _ in girder_entries]
+    t511_rows = []
+    for lbl, girder_output in iter_girder_outputs(bridge.output_dict, girder_entries):
+        girder_results = girder_output.get("design_results") or {}
+        actual = girder_results.get(KEY_SD_STRESS_STEEL)
+        allowable = girder_results.get(KEY_SD_STRESS_STEEL_ALLOWABLE)
+
+        t511_rows.append([
+            lbl, r"Structural Steel ($0.9\,f_y$)",
+            _mpa(allowable), _mpa(actual), _stress_status(actual, allowable),
+        ])
 
     # Supporting calculation for Table 5.11 — the "Actual Stress" above is NOT
     # a plain Md/Z bending stress; it is the Cl.604.3.1 equivalent stress
