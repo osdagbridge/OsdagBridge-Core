@@ -1932,6 +1932,7 @@ class OspGrillage:
         # loop through each load object
         load_str = []
         for load_dict in load_groups:
+            num_of_commands_before_this_load = len(load_str)  # this load's commands start here
             load_obj = load_dict["load"]
             # if compound load, distribute each individual load types within the compound load
             if isinstance(load_obj, CompoundLoad):
@@ -2007,6 +2008,16 @@ class OspGrillage:
                         )
                 elif isinstance(load_obj, PatchLoading):
                     load_str += self._assign_patch_load(load_obj)
+            # scale this load's nodal loads by the load_factor given to LoadCase.add_load()
+            factor = load_dict.get("factor", 1)
+            if factor != 1:
+                # go through only this load's commands
+                for i in range(num_of_commands_before_this_load, len(load_str)):
+                    cmd, args, kw = load_str[i]  # e.g. ("load", (node, Fx, Fy, Fz, Mx, My, Mz), {})
+                    node = args[0]  # node number: not multiplied
+                    forces = args[1:]  # the 6 force values
+                    scaled_forces = [f * factor for f in forces]
+                    load_str[i] = (cmd, (node, *scaled_forces), kw)
 
         return load_str
 
