@@ -1,24 +1,27 @@
 def ch6_drawings(fig_paths):
     """Chapter 6 – Drawings and Visualizations.
 
-    Layout: section heading → figure → small numbered label below.
-    No subsection headers. 6.3 and 6.4 are headings only (no figures).
+    Presents automatically generated bridge views and component schematics
+    produced by OsdagBridge's CAD renderers and Qt-based preview widgets.
+
+    Each figure has an automatically numbered caption.
 
     Figure numbering (auto-incremented by LaTeX):
       6.1  Overall 3D Bridge Superstructure
       6.2  Typical Cross Section
-      6.3  Top View
-      6.4  3D View of Plate Girders
-      6.5  Cross Section of Plate Girder
-      6.6  Side View of Girder
-      6.7  Cross Bracing Layout
-      6.8  Cross Bracing -- Bracing Section
-      6.9  Cross Bracing -- Top Chord Section
-      6.10 Cross Bracing -- Bottom Chord Section
-      6.11 End Diaphragm Layout
-      6.12 End Diaphragm -- Bracing Section
-      6.13 End Diaphragm -- Top Chord Section
-      6.14 End Diaphragm -- Bottom Chord Section
+      6.3  Deck Reinforcement Layout
+      6.4  Top View
+      6.5  3D View of Plate Girders
+      6.6  Cross Section of Plate Girder
+      6.7  Side View of Girder
+      6.8  Cross Bracing Layout
+      6.9  Cross Bracing -- Bracing Section
+      6.10 Cross Bracing -- Top Chord Section
+      6.11 Cross Bracing -- Bottom Chord Section
+      6.12 End Diaphragm Layout
+      6.13 End Diaphragm -- Bracing Section
+      6.14 End Diaphragm -- Top Chord Section
+      6.15 End Diaphragm -- Bottom Chord Section
     """
 
     def _sec_fig(path, title, label=None):
@@ -45,6 +48,11 @@ def ch6_drawings(fig_paths):
 
     sup3d  = _sec_fig(fig_paths.get('final_geometry'),   'Overall 3D Bridge Superstructure',   'fig:bridge-3d')
     cs     = _sec_fig(fig_paths.get('cross_section'),     'Typical Cross Section',              'fig:cross-section')
+    deck_reinforcement = _sec_fig(
+        fig_paths.get("deck_reinforcement"),
+        "Deck Reinforcement Layout",
+        "fig:deck-reinforcement",
+    )
     gtop   = _sec_fig(fig_paths.get('girder_top'),         'Top View',                          'fig:top-view')
     g3d    = _sec_fig(fig_paths.get('girder_3d'),          '3D View of Plate Girders',          'fig:girder-3d')
     gxsec  = _sec_fig(fig_paths.get('section_preview'),   'Cross Section of Plate Girder',     'fig:girder-xsec')
@@ -126,7 +134,7 @@ def ch6_drawings(fig_paths):
 \chapter{Drawings and Visualizations}
 \label{ch:drawings}
 
-This section presents CAD-generated views of the designed bridge and its components. All views are generated automatically by OsdagBridge using pythonOCC.
+This section presents automatically generated bridge views and component schematics produced by OsdagBridge's CAD renderers and Qt-based preview widgets.
 
 \section{Bridge Configuration and Layout}
 \label{sec:bridge-layout}
@@ -134,6 +142,7 @@ This section presents CAD-generated views of the designed bridge and its compone
 """
             + sup3d + '\n\n'
             + cs + '\n\n'
+            + deck_reinforcement + '\n\n'
             + gtop + r"""
 
 \section{Plate Girder --- Detailed Views}
