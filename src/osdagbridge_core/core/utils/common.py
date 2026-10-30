@@ -1647,6 +1647,12 @@ def connectdb(table_name: str) -> list[str]:
     LookupError
         If the database is not found or the query fails.
     """
+    if not _DB_PATH.exists() or _DB_PATH.stat().st_size == 0:
+        try:
+            from osdagbridge_core.core.data.db_init import ensure_osdagbridge_db
+            ensure_osdagbridge_db()
+        except Exception:
+            pass
     if not _DB_PATH.exists():
         raise LookupError(f"Material database not found at {_DB_PATH} in get_grades")
 

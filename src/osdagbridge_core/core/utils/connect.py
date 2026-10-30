@@ -123,7 +123,7 @@ def design_pool(max_workers: int) -> ProcessPoolExecutor:
         ctx = multiprocessing.get_context("forkserver")
         global _forkserver_preloaded
         if not _forkserver_preloaded:
-            ctx.set_forkserver_preload(["osdagbridge.core.utils.connect"])
+            ctx.set_forkserver_preload(["osdagbridge_core.core.utils.connect"])
             _forkserver_preloaded = True
     except ValueError:
         ctx = multiprocessing.get_context("spawn")
