@@ -939,8 +939,31 @@ def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
 
     footpath_str = str(basic_input_dict.get(KEY_FOOTPATH, 'None')).strip()
 
+    # The defaults call overwrites the railing fields. Put a custom entry back.
+    rl_mode = str(basic_input_dict.get(KEY_RL_LOAD_MODE) or "").strip()
+    rl_type = str(basic_input_dict.get(KEY_RL_TYPE) or "").strip()
+    saved_railing = None
+    if rl_mode == "Custom" or rl_type == "Custom":
+        saved_railing = {
+            key: basic_input_dict.get(key)
+            for key in (
+                KEY_RL_TYPE,
+                KEY_RL_WIDTH,
+                KEY_RL_HEIGHT,
+                KEY_RL_LOAD_MODE,
+                KEY_RL_LOAD_VALUE,
+            )
+        }
+
     # Fill sub-tab defaults before reading any typical-section keys (e.g. footpath width)
     _update_typical_section_defaults(basic_input_dict)
+
+    if saved_railing is not None:
+        for key, value in saved_railing.items():
+            if value not in (None, ""):
+                basic_input_dict[key] = value
+        if not rl_mode and rl_type == "Custom":
+            basic_input_dict[KEY_RL_LOAD_MODE] = "Custom"
 
     _update_loading_tab_defaults(basic_input_dict)
 
