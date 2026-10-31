@@ -34,6 +34,7 @@ from osdagbridge_core.core.utils.common import (
     KEY_MP_GIRDER_FLANGE_AREA_TOP,
     KEY_MP_GIRDER_FLANGE_AREA_BOT,
     KEY_MP_GIRDER_WEB_AREA,
+    SAIL_APPROVED_THICKNESS_VALUES,
 )
 
 STEEL_DENSITY_KG_M3 = 7850.0  # IRC 24 / IS 2062 structural-steel density
@@ -70,6 +71,13 @@ SIZE_INCREMENT_M = 0.010  # m
 def ceil_to_size_increment(value_m: float) -> float:
     """Round a metre dimension up to the next 10 mm."""
     return ceil(round(value_m / SIZE_INCREMENT_M, 6)) * SIZE_INCREMENT_M
+
+def ceil_to_sail_thickness(value_m: float) -> float:
+    """Round a metre thickness up to the next SAIL-approved plate thickness."""
+    for s in sorted(SAIL_APPROVED_THICKNESS_VALUES, key=float):
+        if float(s) >= round(value_m * 1e3, 6):
+            return float(s) / 1e3
+    return value_m
 
 @dataclass
 class BridgeLayoutResult:
@@ -537,10 +545,10 @@ class BridgeConfigurationSolver:
             # =========================================================
             bf_top = B_top if B_top > 0 else ceil_to_size_increment(0.3 * D)
             bf_bot = B_bot if B_bot > 0 else ceil_to_size_increment(0.35 * D)
-            tf_top = t_f_top if t_f_top > 0 else bf_top / 24.0
-            tf_bot = t_f_bot if t_f_bot > 0 else bf_bot / 24.0
+            tf_top = t_f_top if t_f_top > 0 else ceil_to_sail_thickness(bf_top / 24.0)
+            tf_bot = t_f_bot if t_f_bot > 0 else ceil_to_sail_thickness(bf_bot / 24.0)
             d_web = D - tf_top - tf_bot
-            tw = t_w if t_w > 0 else d_web / 200.0
+            tw = t_w if t_w > 0 else ceil_to_sail_thickness(d_web / 200.0)
 
             # Strong-axis + area properties come from the shared equation source
             # (unit-agnostic; here everything is in metres).
