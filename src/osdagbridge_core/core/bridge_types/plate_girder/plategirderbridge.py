@@ -20,7 +20,7 @@ from .dto import (
 from .defaults import (
     BASIC_INPUT_DICT,
 )
-from .initial_sizing import DEFAULT_FOOTPATH_WIDTH
+from .initial_sizing import DEFAULT_FOOTPATH_WIDTH, steel_i_section_properties
 from .analyser import BridgeGrillageModel
 from osdagbridge_core.core.utils.memory_guard import OpsMemoryGuard, log_memory, tracemalloc_mark_start
 from .analysis_results import PlateGirderAnalysisResults
@@ -246,6 +246,7 @@ from osdagbridge_core.core.utils.common import (
     KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND,
     KEY_MP_STIFFENER_INTERMEDIATE_SPACING,
     KEY_MP_STIFFENER_LONGITUDINAL,
+    KEY_MP_GD_SEGMENT_TABLE,
     )
 
 from osdagbridge_core.core.bridge_types.plate_girder.initial_sizing import (
@@ -268,6 +269,33 @@ from osdagbridge_core.core.utils.logger import bridge_logger
 from osdagbridge_core.core.bridge_types.plate_girder.designer import (BridgeConfig, IRC22CapacityCalculator, DCREngine, DemandEnvelope, design_envelope_engine,)
 
 _DB_PATH = Path(__file__).resolve().parents[2] / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
+
+# Section-property keys recomputed at design time.
+# Maps steel_i_section_properties() arguments to input_dict keys.
+_SECTION_DIM_KEYS = {
+    "D": KEY_MP_GIRDER_DEPTH,
+    "bf_top": KEY_MP_GIRDER_TOP_FLANGE_WIDTH,
+    "tf_top": KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+    "bf_bot": KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,
+    "tf_bot": KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
+    "tw": KEY_MP_GIRDER_WEB_THICKNESS,
+}
+
+_SECTION_OUTPUT_KEYS = (
+    KEY_MP_GIRDER_WEB_DEPTH,
+    KEY_MP_GIRDER_SECTIONAL_AREA,
+    KEY_MP_GIRDER_MASS,
+    KEY_MP_GIRDER_SECTIONAL_IZ,
+    KEY_MP_GIRDER_SECTIONAL_IY,
+    KEY_MP_GIRDER_RADIUS_GYRATION_Z,
+    KEY_MP_GIRDER_RADIUS_GYRATION_Y,
+    KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,
+    KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
+    KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,
+    KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
+    KEY_MP_GIRDER_TORSION_CONSTANT_IT,
+    KEY_MP_GIRDER_WARPING_CONSTANT_IW,
+)
 
 # Steel constants (same values used in analyser.py __main__)
 _STEEL_E0       = 200 * GPa    # Initial elastic modulus (Pa)
@@ -625,6 +653,20 @@ class PlateGirderBridge:
             _to_m(base_key)
             for gi in range(count):
                 _to_m(f"{base_key}.G{gi + 1}.M1")
+
+        # Recompute web depth and all derived section properties from the final
+        # metre dimensions (single source: steel_i_section_properties).
+        for gi in range(count):
+            for seg in inp[f"{KEY_MP_GD_SEGMENT_TABLE}.G{gi + 1}"]:
+                mi = int(re.fullmatch(r"G\d+M(\d+)", str(seg["id"]).strip()).group(1))
+                suffix = f".G{gi + 1}.M{mi}"
+
+                raw = {arg: inp.get(f"{key}{suffix}") for arg, key in _SECTION_DIM_KEYS.items()}
+                if None in raw.values():
+                    continue
+                props = steel_i_section_properties(**{a: float(v) for a, v in raw.items()})
+                for k in _SECTION_OUTPUT_KEYS:
+                    inp[f"{k}{suffix}"] = props[k]
 
     def _run_stage(self, stage_num: str, func, *args, **kwargs):
         # Check for user cancel before entering each stage, then emit start/complete markers
