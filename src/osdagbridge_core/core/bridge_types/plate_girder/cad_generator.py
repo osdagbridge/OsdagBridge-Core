@@ -22,6 +22,7 @@ Features:
 
 
 """
+import re
 from osdagbridge_core.core.utils.common import *
 from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB, Quantity_NOC_BLACK
 from OCC.Core.TopoDS import TopoDS_Shape
@@ -31,6 +32,9 @@ from OCC.Core.TopAbs import TopAbs_EDGE
 # Component builder imports
 from osdagbridge_core.core.bridge_components.super_structure.plate_girder.builder import (
     build_plate_girder_geometry, GirderSegment
+)
+from osdagbridge_core.core.bridge_components.super_structure.rolled_beam.builder import (
+    build_rolled_girder_geometry
 )
 from osdagbridge_core.core.bridge_components.super_structure.deck.builder import (
     build_deck
@@ -64,6 +68,73 @@ KEY_CAD_CRASH_BARRIER = "Crash Barrier"
 KEY_CAD_RAILING = "Railing"
 KEY_CAD_MEDIAN = "Median"
 KEY_MODULE_PG = "Plate Girder"
+
+
+from OCC.Core.gp import gp_Trsf, gp_Vec
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+
+
+def _shift(shape, dx):
+    t = gp_Trsf()
+    t.SetTranslation(gp_Vec(dx, 0, 0))
+    return BRepBuilderAPI_Transform(shape, t, True).Shape()
+
+
+def _member_values(od, gi, mi):
+    s = f".G{gi}.M{mi}"
+    g = lambda k: od[k + s]
+    lg = str(g(KEY_MP_STIFFENER_LONGITUDINAL)).strip().lower()
+    head_h = float(od[KEY_DS_STUD_HEAD_HEIGHT])
+    inc_int = str(g(KEY_MP_STIFFENER_INTERMEDIATE)).strip().lower() == "yes"
+    b_os = str(g(KEY_MP_STIFFENER_BEARING_OUTSTAND)).strip()
+    return dict(
+        section_dims={k: float(g(k)) * 1000 for k in (KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, KEY_MP_GIRDER_WEB_THICKNESS, KEY_MP_GIRDER_WEB_DEPTH)},
+        include_intermediate_stiffeners=inc_int,
+        intermediate_stiffener_spacing=float(g(KEY_MP_STIFFENER_INTERMEDIATE_SPACING)) if inc_int else 0.0,
+        intermediate_stiffener_thickness=float(g(KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS)) if inc_int else 0.0,
+        intermediate_stiffener_outstand=float(g(KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND)) if inc_int else 0.0,
+        num_end_stiffener_pairs=int(float(g(KEY_MP_STIFFENER_NO_BEARING_STIFFENERS))),
+        end_stiffener_spacing=float(g(KEY_MP_STIFFENER_SPACING)),
+        T_es=float(g(KEY_MP_STIFFENER_BEARING_THICKNESS)),
+        end_stiffener_outstand=float(b_os) if b_os not in ("", "NA", "None") else 0.0,
+        num_longitudinal_stiffeners=0 if lg in ("no", "none", "") else int(re.search(r"\d+", lg).group()),
+        longitudinal_stiffener_thickness=float(g(KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS)),
+        longitudinal_stiffener_outstand=float(g(KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND)) if inc_int else 0.0,
+        shear_stud_base_diameter=float(od[KEY_DS_STUD_DIAMETER]),
+        shear_stud_top_diameter=float(od[KEY_DS_STUD_HEAD_DIAMETER]),
+        shear_stud_base_height=float(od[KEY_DS_STUD_HEIGHT]) - head_h,
+        shear_stud_top_height=head_h,
+        num_shear_studs_per_section=int(float(od[KEY_DS_STUD_COUNT])),
+        shear_stud_transverse_spacing=float(od[KEY_DS_STUD_TRANSVERSE_SPACING]),
+        shear_stud_pitch=float(od[KEY_SD_SHEAR_LONGITUDINAL_SPACING]),
+    )
+
+
+def _build_rolled_girder(od, gi, seg_table, ref_top_z, right_guided):
+    out = {}
+    last = len(seg_table) - 1
+    for n, seg in enumerate(seg_table):
+        mi = int(re.match(r"G\d+M(\d+)", seg["id"]).group(1))
+        pg = build_rolled_girder_geometry(length=(seg["end"] - seg["start"]) * 1000, reference_top_z=ref_top_z, right_guided=right_guided, **_member_values(od, gi, mi))
+        dx = seg["start"] * 1000
+        for k, v in pg.items():
+            if k == "support_groups":
+                for (comp, end), shapes in v.items():
+                    if (end == "Left" and n > 0) or (end == "Right" and n < last):
+                        continue
+                    out.setdefault(k, {}).setdefault((comp, end), []).extend(_shift(s, dx) for s in shapes)
+            elif k.startswith("supports_"):
+                continue
+            else:
+                out.setdefault(k, []).extend(_shift(s, dx) for s in v)
+    sg = out.setdefault("support_groups", {})
+    by = lambda c: [s for (cc, _), v in sg.items() if cc == c for s in v]
+    out["supports_vertical"] = by("Support Vertical")
+    out["supports_wide_horiz"] = by("Support Transverse")
+    out["supports_long_horiz"] = by("Support Longitudinal")
+    out["supports_tri"] = out["supports_vertical"] + out["supports_wide_horiz"] + out["supports_long_horiz"]
+    out["supports_cyl"] = []
+    return out
 
 
 # CAD GENERATOR CLASS
@@ -505,37 +576,47 @@ class PlateGirderCADGenerator:
             j = i + 1
             right_guided = ((j % 2) != (N % 2)) and (1 < j < N)
 
-                
-            pg = build_plate_girder_geometry(
-                D=self.girder_section_d,
-                tw=self.girder_section_tw,
-                length=self.span_length_L,
-                T_ft=self.girder_section_tf,
-                T_fb=self.girder_section_tf_b,
-                B_ft=self.girder_section_bf,
-                B_fb=self.girder_section_bf_b,
-                segments=current_segments,
-                include_intermediate_stiffeners=g_include_intermediate,
-                intermediate_stiffener_spacing=g_intermediate_spacing,
-                intermediate_stiffener_thickness=g_intermediate_thickness,
-                chamfer_length=40,
-                num_end_stiffener_pairs=g_num_end_pairs,
-                T_es=g_end_thickness,
-                intermediate_stiffener_outstand=g_intermediate_outstand,
-                end_stiffener_outstand=g_end_outstand,
-                include_longitudinal_stiffeners=g_include_longitudinal,
-                num_longitudinal_stiffeners=g_num_longitudinal,
-                longitudinal_stiffener_thickness=g_longitudinal_thickness,
-                longitudinal_stiffener_outstand=g_longitudinal_outstand,
-                shear_stud_base_diameter=self.shear_stud_base_diameter,
-                shear_stud_top_diameter=self.shear_stud_top_diameter,
-                shear_stud_base_height=self.shear_stud_base_height,
-                shear_stud_top_height=self.shear_stud_top_height,
-                num_shear_studs_per_section=self.num_shear_studs_per_section,
-                shear_stud_transverse_spacing=self.shear_stud_transverse_spacing,
-                shear_stud_pitch=self.shear_stud_pitch,
-                right_guided=right_guided
+            output_dict = self.output_dict or {}
+            seg_table = output_dict.get(f"{KEY_MP_GD_SEGMENT_TABLE}.G{i + 1}") or []
+            member_idx = [int(re.match(r"G\d+M(\d+)", s["id"]).group(1)) for s in seg_table]
+            is_rolled = bool(seg_table) and all(
+                str(output_dict.get(f"{KEY_MP_GIRDER_TYPE}.G{i + 1}.M{mi}")).strip() == VALUES_GIRDER_TYPE[1]
+                for mi in member_idx
             )
+
+            if is_rolled:
+                pg = _build_rolled_girder(output_dict, i + 1, seg_table, self.girder_section_d / 2 + self.girder_section_tf, right_guided)
+            else:
+                pg = build_plate_girder_geometry(
+                    D=self.girder_section_d,
+                    tw=self.girder_section_tw,
+                    length=self.span_length_L,
+                    T_ft=self.girder_section_tf,
+                    T_fb=self.girder_section_tf_b,
+                    B_ft=self.girder_section_bf,
+                    B_fb=self.girder_section_bf_b,
+                    segments=current_segments,
+                    include_intermediate_stiffeners=g_include_intermediate,
+                    intermediate_stiffener_spacing=g_intermediate_spacing,
+                    intermediate_stiffener_thickness=g_intermediate_thickness,
+                    chamfer_length=40,
+                    num_end_stiffener_pairs=g_num_end_pairs,
+                    T_es=g_end_thickness,
+                    intermediate_stiffener_outstand=g_intermediate_outstand,
+                    end_stiffener_outstand=g_end_outstand,
+                    include_longitudinal_stiffeners=g_include_longitudinal,
+                    num_longitudinal_stiffeners=g_num_longitudinal,
+                    longitudinal_stiffener_thickness=g_longitudinal_thickness,
+                    longitudinal_stiffener_outstand=g_longitudinal_outstand,
+                    shear_stud_base_diameter=self.shear_stud_base_diameter,
+                    shear_stud_top_diameter=self.shear_stud_top_diameter,
+                    shear_stud_base_height=self.shear_stud_base_height,
+                    shear_stud_top_height=self.shear_stud_top_height,
+                    num_shear_studs_per_section=self.num_shear_studs_per_section,
+                    shear_stud_transverse_spacing=self.shear_stud_transverse_spacing,
+                    shear_stud_pitch=self.shear_stud_pitch,
+                    right_guided=right_guided
+                )
             
 
             # Calculate transverse offset (Y-direction)
