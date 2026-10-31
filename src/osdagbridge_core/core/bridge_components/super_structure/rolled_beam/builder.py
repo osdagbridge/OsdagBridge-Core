@@ -16,9 +16,8 @@ from osdagbridge_core.core.utils.common import (
     KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
     KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
     KEY_MP_GIRDER_WEB_THICKNESS,
+    KEY_MP_GIRDER_WEB_DEPTH,
 )
-
-ROLLED_END_STIFFENER_SPACING = 50.0
 
 
 def _make_rolled_edge(p1, p2):
@@ -94,27 +93,20 @@ def create_rolled_shear_stud(base_dia, base_height, top_dia, top_height):
     return BRepAlgoAPI_Fuse(base_cyl, top_cyl).Shape()
 
 
-def _make_rolled_i_section_solid(bf, bf_b, tf, tf_b, tw, depth, z_top, length):
-    b_t = bf / 2.0
-    b_b = bf_b / 2.0
-    w = tw / 2.0
-    z_top_in = z_top - tf
-    z_bot = z_top - depth
-    z_bot_in = z_bot + tf_b
-
+def _make_rolled_i_section_solid(section_dims, z_top, length):
     pts = [
-        gp_Pnt(-b_t, 0.0, z_top),
-        gp_Pnt(b_t, 0.0, z_top),
-        gp_Pnt(b_t, 0.0, z_top_in),
-        gp_Pnt(w, 0.0, z_top_in),
-        gp_Pnt(w, 0.0, z_bot_in),
-        gp_Pnt(b_b, 0.0, z_bot_in),
-        gp_Pnt(b_b, 0.0, z_bot),
-        gp_Pnt(-b_b, 0.0, z_bot),
-        gp_Pnt(-b_b, 0.0, z_bot_in),
-        gp_Pnt(-w, 0.0, z_bot_in),
-        gp_Pnt(-w, 0.0, z_top_in),
-        gp_Pnt(-b_t, 0.0, z_top_in),
+        gp_Pnt(-section_dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] / 2.0, 0.0, z_top),
+        gp_Pnt(section_dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] / 2.0, 0.0, z_top),
+        gp_Pnt(section_dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] / 2.0, 0.0, z_top - section_dims[KEY_MP_GIRDER_TOP_FLANGE_THICKNESS]),
+        gp_Pnt(section_dims[KEY_MP_GIRDER_WEB_THICKNESS] / 2.0, 0.0, z_top - section_dims[KEY_MP_GIRDER_TOP_FLANGE_THICKNESS]),
+        gp_Pnt(section_dims[KEY_MP_GIRDER_WEB_THICKNESS] / 2.0, 0.0, z_top - section_dims[KEY_MP_GIRDER_DEPTH] + section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS]),
+        gp_Pnt(section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH] / 2.0, 0.0, z_top - section_dims[KEY_MP_GIRDER_DEPTH] + section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS]),
+        gp_Pnt(section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH] / 2.0, 0.0, z_top - section_dims[KEY_MP_GIRDER_DEPTH]),
+        gp_Pnt(-section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH] / 2.0, 0.0, z_top - section_dims[KEY_MP_GIRDER_DEPTH]),
+        gp_Pnt(-section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH] / 2.0, 0.0, z_top - section_dims[KEY_MP_GIRDER_DEPTH] + section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS]),
+        gp_Pnt(-section_dims[KEY_MP_GIRDER_WEB_THICKNESS] / 2.0, 0.0, z_top - section_dims[KEY_MP_GIRDER_DEPTH] + section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS]),
+        gp_Pnt(-section_dims[KEY_MP_GIRDER_WEB_THICKNESS] / 2.0, 0.0, z_top - section_dims[KEY_MP_GIRDER_TOP_FLANGE_THICKNESS]),
+        gp_Pnt(-section_dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] / 2.0, 0.0, z_top - section_dims[KEY_MP_GIRDER_TOP_FLANGE_THICKNESS]),
     ]
     wire = _make_rolled_wire_from_points(pts)
     face = BRepBuilderAPI_MakeFace(wire).Face()
@@ -123,127 +115,100 @@ def _make_rolled_i_section_solid(bf, bf_b, tf, tf_b, tw, depth, z_top, length):
 
 def build_rolled_girder_geometry(
     *,
-    section_dims=None,
+    section_dims,
     length,
-    reference_top_z=None,
-    include_intermediate_stiffeners=True,
-    intermediate_stiffener_spacing=750,
-    intermediate_stiffener_thickness=20,
+    reference_top_z,
+    include_intermediate_stiffeners,
+    intermediate_stiffener_spacing,
+    intermediate_stiffener_thickness,
+    intermediate_stiffener_outstand,
+    num_end_stiffener_pairs,
+    end_stiffener_spacing,
+    T_es,
+    end_stiffener_outstand,
+    num_longitudinal_stiffeners,
+    longitudinal_stiffener_thickness,
+    longitudinal_stiffener_outstand,
+    shear_stud_base_diameter,
+    shear_stud_top_diameter,
+    shear_stud_base_height,
+    shear_stud_top_height,
+    num_shear_studs_per_section,
+    shear_stud_transverse_spacing,
+    shear_stud_pitch,
+    right_guided,
     chamfer_length=40,
-    num_end_stiffener_pairs=2,
-    T_es=25,
-    intermediate_stiffener_outstand=None,
-    end_stiffener_outstand=None,
-    include_longitudinal_stiffeners=False,
-    num_longitudinal_stiffeners=1,
-    longitudinal_stiffener_thickness=20,
-    longitudinal_stiffener_outstand=None,
-    shear_stud_base_diameter=16,
-    shear_stud_top_diameter=25,
-    shear_stud_base_height=135,
-    shear_stud_top_height=15,
-    num_shear_studs_per_section=2,
-    shear_stud_transverse_spacing=100,
-    shear_stud_pitch=200,
-    right_guided=False,
-    **kwargs
 ):
-    dims = section_dims or {}
-    depth = float(dims.get(KEY_MP_GIRDER_DEPTH, kwargs.get("depth", kwargs.get("D", 0.0))))
-    tf = float(dims.get(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, kwargs.get("tf", kwargs.get("T_ft", 0.0))))
-    tf_b = float(dims.get(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, kwargs.get("tf_b", kwargs.get("T_fb", tf))))
-    bf = float(dims.get(KEY_MP_GIRDER_TOP_FLANGE_WIDTH, kwargs.get("bf", kwargs.get("B_ft", 0.0))))
-    bf_b = float(dims.get(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, kwargs.get("bf_b", kwargs.get("B_fb", bf))))
-    tw = float(dims.get(KEY_MP_GIRDER_WEB_THICKNESS, kwargs.get("tw", 0.0)))
-
-    Z_top = reference_top_z if reference_top_z is not None else (depth / 2.0 + tf)
-    web_depth = depth - tf - tf_b
-    z_web_center = Z_top - tf - web_depth / 2.0
-
-    web_shapes = [_make_rolled_i_section_solid(bf, bf_b, tf, tf_b, tw, depth, Z_top, length)]
-
+    web_shapes = [_make_rolled_i_section_solid(section_dims, reference_top_z, length)]
     intermediate_stiffeners = []
     bearing_stiffeners = []
     longitudinal_stiffeners = []
-
-    default_stiff_width = (min(bf, bf_b) - tw) / 2.0
-    int_stiff_width = intermediate_stiffener_outstand if intermediate_stiffener_outstand is not None else default_stiff_width
-    end_stiff_width = end_stiffener_outstand if end_stiffener_outstand is not None else default_stiff_width
-    chamfer = min(chamfer_length, web_depth / 4.0)
+    z_web_center = reference_top_z - section_dims[KEY_MP_GIRDER_TOP_FLANGE_THICKNESS] - section_dims[KEY_MP_GIRDER_WEB_DEPTH] / 2.0
+    chamfer = min(chamfer_length, section_dims[KEY_MP_GIRDER_WEB_DEPTH] / 4.0)
 
     if include_intermediate_stiffeners:
         num_panels = max(1, int(length // intermediate_stiffener_spacing))
-        end_stiffener_gap = T_es / 2.0
-        end_stiffener_zone = end_stiffener_gap + (num_end_stiffener_pairs - 1) * ROLLED_END_STIFFENER_SPACING + ROLLED_END_STIFFENER_SPACING
-        start_y = end_stiffener_zone
-        end_y = length - end_stiffener_zone
+        end_stiffener_zone = T_es / 2.0 + (num_end_stiffener_pairs - 1) * end_stiffener_spacing + end_stiffener_spacing
 
         for i in range(1, num_panels):
             y = i * intermediate_stiffener_spacing
-            if y <= start_y or y >= end_y:
+            if y <= end_stiffener_zone or y >= length - end_stiffener_zone:
                 continue
             intermediate_stiffeners.append(
-                _create_rolled_stiffener_plate([tw / 2.0, y, z_web_center], int_stiff_width, web_depth, intermediate_stiffener_thickness, chamfer, "right")
+                _create_rolled_stiffener_plate([section_dims[KEY_MP_GIRDER_WEB_THICKNESS] / 2.0, y, z_web_center], intermediate_stiffener_outstand, section_dims[KEY_MP_GIRDER_WEB_DEPTH], intermediate_stiffener_thickness, chamfer, "right")
             )
             intermediate_stiffeners.append(
-                _create_rolled_stiffener_plate([-tw / 2.0, y, z_web_center], int_stiff_width, web_depth, intermediate_stiffener_thickness, chamfer, "left")
+                _create_rolled_stiffener_plate([-section_dims[KEY_MP_GIRDER_WEB_THICKNESS] / 2.0, y, z_web_center], intermediate_stiffener_outstand, section_dims[KEY_MP_GIRDER_WEB_DEPTH], intermediate_stiffener_thickness, chamfer, "left")
             )
 
-    end_stiffener_gap = T_es / 2.0
     end_positions = []
     for i in range(num_end_stiffener_pairs):
-        end_positions.append(end_stiffener_gap + i * ROLLED_END_STIFFENER_SPACING)
+        end_positions.append(T_es / 2.0 + i * end_stiffener_spacing)
     for i in range(num_end_stiffener_pairs):
-        end_positions.append(length - end_stiffener_gap - i * ROLLED_END_STIFFENER_SPACING)
+        end_positions.append(length - T_es / 2.0 - i * end_stiffener_spacing)
 
     for y in end_positions:
         bearing_stiffeners.append(
-            _create_rolled_stiffener_plate([tw / 2.0, y, z_web_center], end_stiff_width, web_depth, T_es, chamfer, "right")
+            _create_rolled_stiffener_plate([section_dims[KEY_MP_GIRDER_WEB_THICKNESS] / 2.0, y, z_web_center], end_stiffener_outstand, section_dims[KEY_MP_GIRDER_WEB_DEPTH], T_es, chamfer, "right")
         )
         bearing_stiffeners.append(
-            _create_rolled_stiffener_plate([-tw / 2.0, y, z_web_center], end_stiff_width, web_depth, T_es, chamfer, "left")
+            _create_rolled_stiffener_plate([-section_dims[KEY_MP_GIRDER_WEB_THICKNESS] / 2.0, y, z_web_center], end_stiffener_outstand, section_dims[KEY_MP_GIRDER_WEB_DEPTH], T_es, chamfer, "left")
         )
 
-    if include_longitudinal_stiffeners:
-        long_stiff_width = longitudinal_stiffener_outstand if longitudinal_stiffener_outstand is not None else default_stiff_width
-        long_stiff_start = T_es
-        seg_len = (length - T_es) - long_stiff_start
+    if num_longitudinal_stiffeners:
+        seg_len = (length - T_es) - T_es
         if seg_len > 0:
             heights = []
             if num_longitudinal_stiffeners == 1:
-                heights.append(z_web_center + web_depth / 2.0 - web_depth / 3.0)
+                heights.append(z_web_center + section_dims[KEY_MP_GIRDER_WEB_DEPTH] / 2.0 - section_dims[KEY_MP_GIRDER_WEB_DEPTH] / 3.0)
             elif num_longitudinal_stiffeners == 2:
-                heights.append(z_web_center + web_depth / 2.0 - web_depth / 3.0)
-                heights.append(z_web_center + web_depth / 2.0 - 2.0 * web_depth / 3.0)
+                heights.append(z_web_center + section_dims[KEY_MP_GIRDER_WEB_DEPTH] / 2.0 - section_dims[KEY_MP_GIRDER_WEB_DEPTH] / 3.0)
+                heights.append(z_web_center + section_dims[KEY_MP_GIRDER_WEB_DEPTH] / 2.0 - 2.0 * section_dims[KEY_MP_GIRDER_WEB_DEPTH] / 3.0)
             for h in heights:
-                long_stiff_r = _make_rolled_plate(
-                    origin=np.array([tw / 2.0 + long_stiff_width / 2.0, long_stiff_start, h]),
-                    length=long_stiff_width,
+                longitudinal_stiffeners.append(_make_rolled_plate(
+                    origin=np.array([section_dims[KEY_MP_GIRDER_WEB_THICKNESS] / 2.0 + longitudinal_stiffener_outstand / 2.0, T_es, h]),
+                    length=longitudinal_stiffener_outstand,
                     width=seg_len,
                     thickness=longitudinal_stiffener_thickness,
                     u_dir=np.array([0., 0., 1.]),
                     w_dir=np.array([0., 1., 0.])
-                )
-                longitudinal_stiffeners.append(long_stiff_r)
-                long_stiff_l = _make_rolled_plate(
-                    origin=np.array([-tw / 2.0 - long_stiff_width / 2.0, long_stiff_start, h]),
-                    length=long_stiff_width,
+                ))
+                longitudinal_stiffeners.append(_make_rolled_plate(
+                    origin=np.array([-section_dims[KEY_MP_GIRDER_WEB_THICKNESS] / 2.0 - longitudinal_stiffener_outstand / 2.0, T_es, h]),
+                    length=longitudinal_stiffener_outstand,
                     width=seg_len,
                     thickness=longitudinal_stiffener_thickness,
                     u_dir=np.array([0., 0., 1.]),
                     w_dir=np.array([0., 1., 0.])
-                )
-                longitudinal_stiffeners.append(long_stiff_l)
+                ))
 
     shear_studs = []
     if num_shear_studs_per_section > 0 and shear_stud_pitch > 0:
         base_stud = create_rolled_shear_stud(shear_stud_base_diameter, shear_stud_base_height, shear_stud_top_diameter, shear_stud_top_height)
-        z_stud = Z_top
         min_edge = 50.0
         if length > 2 * min_edge:
             max_intervals = int((length - 2 * min_edge) // shear_stud_pitch)
-            edge = (length - max_intervals * shear_stud_pitch) / 2.0
-            start_y = edge
+            start_y = (length - max_intervals * shear_stud_pitch) / 2.0
             num_rows = max_intervals + 1
         else:
             start_y = length / 2.0
@@ -254,33 +219,24 @@ def build_rolled_girder_geometry(
             transverse_positions = [0.0]
         else:
             min_edge_margin = max(50.0, shear_stud_base_diameter)
-            max_total_transverse_width = max(0.0, bf - 2 * min_edge_margin)
-            desired_total_width = (num_shear_studs_per_section - 1) * shear_stud_transverse_spacing
-            actual_total_width = min(desired_total_width, max_total_transverse_width)
-            actual_spacing = actual_total_width / (num_shear_studs_per_section - 1) if num_shear_studs_per_section > 1 else 0.0
-            start_x = -actual_total_width / 2.0
+            actual_total_width = min((num_shear_studs_per_section - 1) * shear_stud_transverse_spacing, max(0.0, section_dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] - 2 * min_edge_margin))
+            actual_spacing = actual_total_width / (num_shear_studs_per_section - 1)
             for k in range(num_shear_studs_per_section):
-                transverse_positions.append(start_x + k * actual_spacing)
+                transverse_positions.append(-actual_total_width / 2.0 + k * actual_spacing)
 
         for i in range(num_rows):
             y_pos = start_y + i * shear_stud_pitch
             for x_pos in transverse_positions:
                 trsf = gp_Trsf()
-                trsf.SetTranslation(gp_Vec(x_pos, y_pos, z_stud))
-                stud = BRepBuilderAPI_Transform(base_stud, trsf, True).Shape()
-                shear_studs.append(stud)
+                trsf.SetTranslation(gp_Vec(x_pos, y_pos, reference_top_z))
+                shear_studs.append(BRepBuilderAPI_Transform(base_stud, trsf, True).Shape())
 
     supports_vertical = []
     supports_wide_horiz = []
     supports_long_horiz = []
     support_groups = {}
 
-    z_contact_left = Z_top - depth
-    z_contact_right = Z_top - depth
-    support_width_left = max(bf, bf_b)
-    support_width_right = max(bf, bf_b)
-
-    base_dim = min(0.10 * length, 0.75 * depth)
+    base_dim = min(0.10 * length, 0.75 * section_dims[KEY_MP_GIRDER_DEPTH])
     h_supp = base_dim / 1.5
     w_supp = base_dim / 2.0
     h_tall = h_supp
@@ -295,51 +251,45 @@ def build_rolled_girder_geometry(
             BRepBuilderAPI_MakeEdge(p3, p0).Edge(),
         ).Wire()
 
-    z_L = z_contact_left
-    sw_L = support_width_left
-
     supports_vertical.append(_rect_wire(
-        gp_Pnt(-w_narrow / 2.0, 0, z_L),
-        gp_Pnt(w_narrow / 2.0, 0, z_L),
-        gp_Pnt(w_narrow / 2.0, 0, z_L - h_tall),
-        gp_Pnt(-w_narrow / 2.0, 0, z_L - h_tall),
+        gp_Pnt(-w_narrow / 2.0, 0, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH]),
+        gp_Pnt(w_narrow / 2.0, 0, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH]),
+        gp_Pnt(w_narrow / 2.0, 0, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH] - h_tall),
+        gp_Pnt(-w_narrow / 2.0, 0, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH] - h_tall),
     ))
     support_groups.setdefault(("Support Vertical", "Left"), []).append(supports_vertical[-1])
 
     if right_guided:
         supports_wide_horiz.append(_rect_wire(
-            gp_Pnt(-sw_L / 2.0, 0, z_L),
-            gp_Pnt(sw_L / 2.0, 0, z_L),
-            gp_Pnt(sw_L / 2.0, 0, z_L - h_short),
-            gp_Pnt(-sw_L / 2.0, 0, z_L - h_short),
+            gp_Pnt(-max(section_dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH], section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH]) / 2.0, 0, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH]),
+            gp_Pnt(max(section_dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH], section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH]) / 2.0, 0, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH]),
+            gp_Pnt(max(section_dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH], section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH]) / 2.0, 0, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH] - h_short),
+            gp_Pnt(-max(section_dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH], section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH]) / 2.0, 0, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH] - h_short),
         ))
         support_groups.setdefault(("Support Transverse", "Left"), []).append(supports_wide_horiz[-1])
 
     supports_long_horiz.append(_rect_wire(
-        gp_Pnt(0, 0, z_L),
-        gp_Pnt(0, w_supp, z_L),
-        gp_Pnt(0, w_supp, z_L - h_short),
-        gp_Pnt(0, 0, z_L - h_short),
+        gp_Pnt(0, 0, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH]),
+        gp_Pnt(0, w_supp, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH]),
+        gp_Pnt(0, w_supp, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH] - h_short),
+        gp_Pnt(0, 0, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH] - h_short),
     ))
     support_groups.setdefault(("Support Longitudinal", "Left"), []).append(supports_long_horiz[-1])
 
-    z_R = z_contact_right
-    sw_R = support_width_right
-
     supports_vertical.append(_rect_wire(
-        gp_Pnt(-w_narrow / 2.0, length, z_R),
-        gp_Pnt(w_narrow / 2.0, length, z_R),
-        gp_Pnt(w_narrow / 2.0, length, z_R - h_tall),
-        gp_Pnt(-w_narrow / 2.0, length, z_R - h_tall),
+        gp_Pnt(-w_narrow / 2.0, length, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH]),
+        gp_Pnt(w_narrow / 2.0, length, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH]),
+        gp_Pnt(w_narrow / 2.0, length, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH] - h_tall),
+        gp_Pnt(-w_narrow / 2.0, length, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH] - h_tall),
     ))
     support_groups.setdefault(("Support Vertical", "Right"), []).append(supports_vertical[-1])
 
     if right_guided:
         supports_wide_horiz.append(_rect_wire(
-            gp_Pnt(-sw_R / 2.0, length, z_R),
-            gp_Pnt(sw_R / 2.0, length, z_R),
-            gp_Pnt(sw_R / 2.0, length, z_R - h_short),
-            gp_Pnt(-sw_R / 2.0, length, z_R - h_short),
+            gp_Pnt(-max(section_dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH], section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH]) / 2.0, length, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH]),
+            gp_Pnt(max(section_dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH], section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH]) / 2.0, length, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH]),
+            gp_Pnt(max(section_dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH], section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH]) / 2.0, length, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH] - h_short),
+            gp_Pnt(-max(section_dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH], section_dims[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH]) / 2.0, length, reference_top_z - section_dims[KEY_MP_GIRDER_DEPTH] - h_short),
         ))
         support_groups.setdefault(("Support Transverse", "Right"), []).append(supports_wide_horiz[-1])
 
