@@ -279,6 +279,8 @@ KEY_DD_WK_LIMIT         = "deck.report.wk_limit"        # permissible crack widt
 KEY_DD_SHEAR_VED        = "deck.report.shear_ved"       # ULS design shear demand V_Ed (kN/m)
 KEY_DD_SHEAR_VRDC       = "deck.report.shear_vrdc"      # shear resistance V_Rd,c = v_Rd,c·b_w·d (kN/m)
 KEY_DD_SHEAR_OK         = "deck.report.shear_ok"        # bool — V_Ed ≤ V_Rd,c
+KEY_DD_SHEAR_VDL        = "deck.report.shear_vdl"       # dead-load shear V_DL (kN/m)
+KEY_DD_SHEAR_VLL        = "deck.report.shear_vll"       # live-load shear V_LL (kN/m)
 
 # -- 5.17(h) Deflection (IRC 112 Cl.12.4.1) --
 KEY_DD_DEFL_INTERIOR        = "deck.report.defl_interior"       # mid-span deflection under frequent combo (mm)
