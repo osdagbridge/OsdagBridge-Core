@@ -11,8 +11,11 @@ from osdagbridge_core.core.utils.common import (
     KEY_TD_CB_SECTION_PROPS_TOP_CHORD,
     KEY_DD_ARM_WHEEL_OH,
     KEY_DD_AS_BOT,
+    KEY_DD_AS_CRACK_TOP,
+    KEY_DD_AS_FLEX_TOP,
     KEY_DD_AS_LONG,
     KEY_DD_AS_MIN,
+    KEY_DD_AS_MIN_TOP,
     KEY_DD_AS_OH,
     KEY_DD_AS_REQ_BOT,
     KEY_DD_AS_REQ_OH,
@@ -26,6 +29,7 @@ from osdagbridge_core.core.utils.common import (
     KEY_DD_DIA_TOP,
     KEY_DD_D_BOT,
     KEY_DD_D_OH,
+    KEY_DD_D_REQ_TOP,
     KEY_DD_D_TOP,
     KEY_DD_EDGE_CLEARANCE,
     KEY_DD_FY,
@@ -77,6 +81,7 @@ from osdagbridge_core.core.utils.common import (
     KEY_DD_WK_OH,
     KEY_DD_WK_TOP,
     KEY_DD_XU_BOT,
+    KEY_DD_XU_FLEX_TOP,
     KEY_DD_XU_TOP,
     KEY_DECK_CONCRETE_GRADE_BASIC,
     KEY_DESIGN_MODE,
@@ -187,6 +192,7 @@ from osdagbridge_core.core.utils.common import (
     KEY_VEHICLE,
 )
 
+from osdagbridge_core.bridge_types.plate_girder.deckdesign import _TIGHTEN_TARGET_UR
 from osdagbridge_core.core.reports.report_utils import (
     _tex, _render_value, get_girder_entries,
     render_report_table, render_grouped_report_table, _fig_embed
@@ -1484,9 +1490,15 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \cline{2-5}
  & Moment Capacity, $M_{Rd}$ & $0.87\,f_y\,A_s\,(d-0.42\,x_u)$ (IRC 112 Cl. 8.2.1, Cl. 9.2) & """ + _dkf(KEY_DD_MU_BOT, nd=2) + r""" kN-m/m & """ + _dks(_dkv(KEY_DD_MU_BOT) >= _dkv(KEY_DD_M_ULS_SAG)) + r""" \\[6pt]
 \hline
-\multirow{3}{*}{\makecell{At Support\\(Hogging)}} & Total Design BM, $M_{u,hog}$ & $0.75\,M_{u,sag}$ & """ + _dkf(KEY_DD_M_ULS_HOG, nd=2) + r""" kN-m/m & --- \\*[6pt]
+\multirow{1}{*}{\makecell{At Support\\(Hogging)}} & Total Design BM, $M_{u,hog}$ & $0.75\,M_{u,sag}$ & """ + _dkf(KEY_DD_M_ULS_HOG, nd=2) + r""" kN-m/m & --- \\*[6pt]
 \cline{2-5}
- & Required Top Steel, $A_{st,top}$ & $M_u / (0.87\,f_y\,d)$ & """ + _dkf(KEY_DD_AS_REQ_TOP, nd=0) + r""" mm²/m & --- \\*[6pt]
+ & Flexural Steel, $A_{st,flex}$ & $0.87\,f_y\,A_{st,flex}$ $(d_{req}-0.42\,x_u)$ $= M_{u,hog}/""" + f"{_TIGHTEN_TARGET_UR:g}" + r"""$ (IRC 112 Cl. 8.2.1, Cl. 9.2), $d_{req}$ = """ + _dkf(KEY_DD_D_REQ_TOP, nd=1) + r""" mm & """ + _dkf(KEY_DD_AS_FLEX_TOP, nd=0) + r""" mm²/m ($x_u$ = """ + _dkf(KEY_DD_XU_FLEX_TOP, nd=1) + r""" mm) & --- \\*[6pt]
+\cline{2-5}
+ & Minimum Steel, $A_{s,min}$ & $0.26\,\frac{f_{ctm}}{f_y}\,b\,d_{req}$, not less than $0.0013\,b\,d_{req}$ (IRC 112 Cl. 16.5.1.1, Eq. 16.1) & """ + _dkf(KEY_DD_AS_MIN_TOP, nd=0) + r""" mm²/m & --- \\*[6pt]
+\cline{2-5}
+ & Crack Control Minimum, $A_{s,crack}$ & $\frac{k_c\,k\,f_{ctm}\,b\,t_s}{f_y}$, $k_c$ = 0.50, $k$ = 0.65 (IRC 22 Cl. 604.4; IRC 112 Cl. 12.3.3, Eq. 12.1) & """ + _dkf(KEY_DD_AS_CRACK_TOP, nd=0) + r""" mm²/m & --- \\*[6pt]
+\cline{2-5}
+ & Required Top Steel, $A_{st,top}$ & $\max(A_{st,flex},$ $A_{s,min},$ $A_{s,crack})$ & """ + _dkf(KEY_DD_AS_REQ_TOP, nd=0) + r""" mm²/m & --- \\*[6pt]
 \cline{2-5}
  & Effective depth, $d$ & $t_s - c_{nom} - \phi/2$ & """ + _dkf(KEY_DD_D_TOP, nd=1) + r""" mm & --- \\*[6pt]
 \cline{2-5}
@@ -1497,7 +1509,7 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
  & Moment Capacity, $M_{Rd}$ & $0.87\,f_y\,A_s\,(d-0.42\,x_u)$ (IRC 112 Cl. 8.2.1, Cl. 9.2) & """ + _dkf(KEY_DD_MU_TOP, nd=2) + r""" kN-m/m & """ + _dks(_dkv(KEY_DD_MU_TOP) >= _dkv(KEY_DD_M_ULS_HOG)) + r""" \\[6pt]
 \hline
 """) + r"""
-\noindent\textit{Note: IRC 112 Cl. 8.2.1, Cl. 9.2. Distribution (longitudinal) reinforcement designed for 20\% of main steel moment (IRC 21 Cl. 305.18).}
+\noindent\textit{Note: IRC 112 Cl. 8.2.1, Cl. 9.2. Distribution (longitudinal) reinforcement designed for 20\% of main steel moment (IRC 21 Cl. 305.18). In $A_{st,flex}$, """ + f"{_TIGHTEN_TARGET_UR:g}" + r""" is the design target utilisation (a design margin, not a code factor); $b$ = 1000 mm; $d_{req}$ is the effective depth used to size the top steel, based on an assumed 12 mm bar.}
 
 \vspace{1em}
 """ + render_report_table(
@@ -1508,7 +1520,7 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
     body_latex=r"""
 Overhang Length, $l_{oh}$ & --- & """ + _render_value(bridge.input_dict, KEY_TS_DECK_OVERHANG, " m") + r""" & --- \\[6pt]
 \hline
-Crash Barrier Load Moment, $M_{barrier}$ & IRC 6 Cl. 206.4 & """ + _dkoh(KEY_DD_M_BARRIER, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
+Crash Barrier Load Moment, $M_{barrier}$ & IRC:6-2017 Cl. 206.6 & """ + _dkoh(KEY_DD_M_BARRIER, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
 Railing Load, $w_{railing}$ & """ + _dkoh(KEY_DD_RAILING_LOAD_KGM, nd=0, unit=" kg/m") + r""" (IRC 6-2017 Cl. 206.5) & """ + _dkoh(KEY_DD_RAILING_LOAD_KNM, nd=4, unit=" kN/m") + r""" & --- \\[6pt]
 \hline
@@ -1549,7 +1561,7 @@ Top Reinforcement Provided & --- & $\phi$""" + _dkoh(KEY_DD_DIA_OH, nd=0) + r"""
 Moment Capacity (top steel), $M_{Rd,oh}$ & IRC 112 Cl. 9.2, Cl. 8.2.1 & """ + _dkoh(KEY_DD_MU_OH, nd=2, unit=" kN-m/m") + r""" & """ + (_dks(_dkv(KEY_DD_MU_OH) >= _dkv(KEY_DD_M_ULS_OH)) if _dk_oh else ("N/A" if _dk_has else "---")) + r""" \\[6pt]
 \hline
 """) + r"""
-\noindent\textit{Note: IRC 6 Cl. 206.4 crash barrier loads applied at kerb face; IRC 112 Cl. 9.2, Cl. 8.2.1 flexure.}
+\noindent\textit{Note: IRC:6-2017 Cl. 206.6 crash barrier loads applied at kerb face; IRC 112 Cl. 9.2, Cl. 8.2.1 flexure.}
 
 \vspace{1em}
 """ + render_report_table(
