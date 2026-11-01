@@ -414,7 +414,8 @@ def _update_design_options_cont_defaults(input_dict: dict) -> None:
 
 def _update_cross_bracing_defaults(basic_input_dict: dict) -> None:
     """Calculate default cross bracing count and spacing based on span."""
-    span_m = float(str(basic_input_dict.get(KEY_SPAN, 0)).strip() or 0)
+    span_val = basic_input_dict.get(KEY_SPAN)
+    span_m = float(span_val) if span_val not in (None, '', 'None') else 0.0
     
     # Only overwrite the CB count/spacing if the span has actually changed,
     # so we don't wipe out user's manual edits from Additional Inputs.
@@ -748,7 +749,7 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
             working_input_dict[f"{KEY_MP_STIFFENER_SELECT_MEMBER_ID}.G{girder_idx}.M{member_id}"] = f"G{girder_idx}M{member_id}"
             for base_key, defaults_key in MP_STIFFENER_PROPS:
                 key = f"{base_key}.G{girder_idx}.M{member_id}"
-                if key not in working_input_dict or str(working_input_dict[key]).strip() in ("", "None", "NA"):
+                if key not in working_input_dict or working_input_dict[key] is None or str(working_input_dict[key]).strip() in ("", "None"):
                     if base_key in (KEY_MP_STIFFENER_BEARING_OUTSTAND, KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND):
                         # Calculate default max outstand: ((min(bf_top, bf_bot) - tw) / 2)
                         b_top = float(working_input_dict.get(f"{KEY_MP_GIRDER_TOP_FLANGE_WIDTH}.G{girder_idx}.M{member_id}") or 0.0)
@@ -936,7 +937,7 @@ def seed_no_of_girders(overall_width: float) -> int:
 
 def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
     """Parse basic inputs and solve bridge layout. Updates basic_input_dict in-place."""
-    from .initial_sizing import BridgeConfigurationSolver, BridgeLayoutResult
+    from .initial_sizing import BridgeConfigurationSolver
 
     def _railing_width_m(value) -> float:
         if value in (None, ""):
@@ -993,30 +994,7 @@ def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
             seed_no_of_girders(solver.calculate_overall_bridge_width())
         )
 
-    user_spacing = basic_input_dict.get(KEY_TS_GIRDER_SPACING)
-    user_overhang = basic_input_dict.get(KEY_TS_DECK_OVERHANG)
-    overall_width = solver.calculate_overall_bridge_width()
-    sizing_result = None
-    if user_spacing is not None and user_overhang is not None:
-        try:
-            s = float(user_spacing)
-            o = float(user_overhang)
-            if s >= 1.0 and o >= 0.0 and abs((no_of_girders - 1) * s + 2 * o - overall_width) < 1e-3:
-                sizing_result = BridgeLayoutResult(
-                    overall_width=overall_width,
-                    no_of_girders=no_of_girders,
-                    girder_spacing=s,
-                    deck_overhang=o,
-                )
-        except (ValueError, TypeError):
-            pass
-
-    if sizing_result is None:
-        try:
-            sizing_result = solver._solve_layout(no_of_girders=no_of_girders, changed_field='girders')
-        except ValueError:
-            no_of_girders = int(seed_no_of_girders(overall_width))
-            sizing_result = solver._solve_layout(no_of_girders=no_of_girders, changed_field='girders')
+    sizing_result = solver._solve_layout(no_of_girders=no_of_girders, changed_field='girders')
 
     print("[DEBUG] Bridge Layout Sizing Result:")
     print(f"  overall_width = {sizing_result.overall_width} m")
