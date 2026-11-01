@@ -232,6 +232,11 @@ KEY_DD_AS_REQ_BOT       = "deck.report.as_req_bot"      # bottom required steel 
 KEY_DD_AS_REQ_TOP       = "deck.report.as_req_top"      # top required steel (mm2/m)
 KEY_DD_XU_BOT           = "deck.report.xu_bot"          # bottom neutral-axis depth xu (mm)
 KEY_DD_XU_TOP           = "deck.report.xu_top"          # top neutral-axis depth xu (mm)
+KEY_DD_D_REQ_TOP        = "deck.report.d_req_top"       # top effective depth used for as_req_top (mm)
+KEY_DD_AS_FLEX_TOP      = "deck.report.as_flex_top"     # top flexural steel demand (mm2/m)
+KEY_DD_XU_FLEX_TOP      = "deck.report.xu_flex_top"     # neutral-axis depth at as_flex_top (mm)
+KEY_DD_AS_MIN_TOP       = "deck.report.as_min_top"      # top min reinforcement (mm2/m, IRC112 Cl.16.5.1.1)
+KEY_DD_AS_CRACK_TOP     = "deck.report.as_crack_top"    # top crack-control minimum (mm2/m, IRC22 Cl.604.4)
 
 # -- 5.17(c) Cantilever overhang flexure --
 KEY_DD_M_BARRIER        = "deck.report.m_barrier"       # crash barrier moment (kNm/m)
