@@ -57,6 +57,8 @@ dependencies = [
   "opsvis>=1.0",
   "ifcopenshell",
   "plotly",
+  "PyYAML",
+  "click",
 ]
 
 [project.optional-dependencies]
@@ -84,4 +86,4 @@ where = ["src"]
 
 # Entry points
 [project.scripts]
-osdagbridge-cli = "osdagbridge_core.cli.__main__:main"
+osdagbridge-cli = "osdagbridge_core.cli.__main__:cli"
