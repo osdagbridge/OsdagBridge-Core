@@ -1378,6 +1378,29 @@ class IRC6_2017:
             'include_median': include_median,
             'footpath': footpath
         }
+
+    # IRC:6-2017 Clause 204.5.4 — Partial safety factor on SV load for the
+    # load combinations with special vehicle.
+    _CL_204_5_4_SV_FACTORS = {
+        'basic':    1.15,   # ULS basic combination (Tables B.1, B.2, B.4 comb. 1)
+        'rare':     1.0,    # SLS rare combination (stress check)
+        'frequent': 0.75,   # SLS frequent combination (deflection, crack width)
+    }
+
+    @staticmethod
+    def cl_204_5_4_sv_load_factor(combination):
+        """
+        IRC:6-2017 Clause 204.5.4 — Partial safety factor on the Special
+        Vehicle load for the SV load combinations.
+
+        Args:
+            combination (str): 'basic', 'rare' or 'frequent'.
+
+        Returns:
+            float: Partial safety factor on the SV load.
+        """
+        return IRC6_2017._CL_204_5_4_SV_FACTORS[combination.strip().lower()]
+
     # =========================================================================
     # CLAUSE 218: SEISMIC DESIGN FUNCTIONS
     # =========================================================================

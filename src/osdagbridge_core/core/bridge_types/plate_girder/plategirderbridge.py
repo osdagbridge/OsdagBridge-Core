@@ -46,6 +46,7 @@ from osdagbridge_core.core.utils.common import (
     KEY_CARRIAGEWAY_WIDTH,
     KEY_INCLUDE_MEDIAN,
     KEY_FOOTPATH,
+    KEY_LL_IRC_CLASS_SV,
     KEY_TS_FOOTPATH_WIDTH,
     KEY_RAILING_WIDTH,
     KEY_SKEW_ANGLE,
@@ -683,8 +684,13 @@ class PlateGirderBridge:
         bridge_logger.check_cancel()
         bridge_logger.sub_step("Creating ULS and SLS combinations...")
         self.create_uls_combinations()
-        
+
         self.create_sls_combinations()
+
+        if getattr(self.grillage_model, "sv_load_cases_list", None):
+            bridge_logger.sub_step("Creating Special Vehicle ULS and SLS combinations...")
+            self.create_sv_uls_combinations()
+            self.create_sv_sls_combinations()
 
     def _stage_cad_generation(self):
         # Validate that the CAD parameter DTO can be assembled, but do NOT build
@@ -1414,6 +1420,7 @@ class PlateGirderBridge:
           2. Moving vehicle load cases — moving paths for each vehicle
           3. Fatigue vehicle — IRC:6 Cl.204.6 truck on the carriageway centreline
           4. Moving fatigue vehicle — the fatigue truck traversing the span
+          5. Special Vehicle — IRC:6 Cl.204.5, only when Class SV is ticked
 
         The braking load (IRC:6 Cl.211) is not created here: it derives from
         whichever case turns out to govern, so it is built in
@@ -1432,6 +1439,11 @@ class PlateGirderBridge:
         bridge_logger.check_cancel()
 
         model.create_moving_fatigue_load_cases()
+        bridge_logger.check_cancel()
+
+        sv_flag = self.input_dict.get(KEY_LL_IRC_CLASS_SV)
+        if sv_flag is True or str(sv_flag).strip().lower() in ("1", "true", "yes", "checked"):
+            model.add_sv_load_cases()
 
     # ─────────────────────────────────────────────────────────────────────────
     # Wind loads — applied after dead and live loads, before analysis
@@ -2431,6 +2443,38 @@ class PlateGirderBridge:
         """
         included = self._combination_keys(lambda k: ".sls." in k)
         return self.grillage_model.create_sls_combinations(included_keys=included)
+
+    def create_sv_uls_combinations(self) -> list:
+        """
+        Create the Special Vehicle ULS combinations per IRC:6-2017 Cl.204.5.4
+        (basic and accidental, one set per SV load case).
+
+        Must be called after create_uls_combinations() so the SV combinations
+        are appended to the existing ULS list.
+
+        Delegates to BridgeGrillageModel.create_sv_uls_combinations().
+
+        Returns
+        -------
+        list — ospgrillage load-case objects registered with the model.
+        """
+        return self.grillage_model.create_sv_uls_combinations()
+
+    def create_sv_sls_combinations(self) -> list:
+        """
+        Create the Special Vehicle SLS combinations per IRC:6-2017 Cl.204.5.4
+        (rare and frequent, one set per SV load case).
+
+        Must be called after create_sls_combinations() so the SV combinations
+        are appended to the existing SLS list.
+
+        Delegates to BridgeGrillageModel.create_sv_sls_combinations().
+
+        Returns
+        -------
+        list — ospgrillage load-case objects registered with the model.
+        """
+        return self.grillage_model.create_sv_sls_combinations()
 
     def create_dl_ll_combination(self, dl_factor: float = 1.0, ll_factor: float = 1.0):
         """
