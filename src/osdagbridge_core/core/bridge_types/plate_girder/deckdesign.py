@@ -46,6 +46,7 @@ from osdagbridge_core.core.utils.common import (
     KEY_DD_PUNCH_C2, KEY_DD_PUNCH_U1, KEY_DD_PUNCH_VED,
     KEY_DD_VRD_C_MPA, KEY_DD_PUNCH_OK,
     KEY_DD_SHEAR_VED, KEY_DD_SHEAR_VRDC, KEY_DD_SHEAR_OK,
+    KEY_DD_SHEAR_VDL, KEY_DD_SHEAR_VLL,
     KEY_DD_AS_MIN, KEY_DD_WK_BOT, KEY_DD_WK_TOP,
     KEY_DD_WK_OH, KEY_DD_WK_LIMIT, KEY_DD_DIA_BOT,
     KEY_DD_SPC_BOT, KEY_DD_AS_BOT, KEY_DD_DIA_TOP,
@@ -1213,6 +1214,8 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         KEY_DD_SHEAR_VED      : V_ULS_bot_shear,
         KEY_DD_SHEAR_VRDC     : VRd_c_bot,
         KEY_DD_SHEAR_OK       : shear_bot_ok,
+        KEY_DD_SHEAR_VDL      : V_DL_kN_m,
+        KEY_DD_SHEAR_VLL      : V_LL_kN_m,
         # -- 5.17(e) crack width --
         KEY_DD_AS_MIN         : as_min_bot,
         KEY_DD_WK_BOT         : cw_bot["wk"],

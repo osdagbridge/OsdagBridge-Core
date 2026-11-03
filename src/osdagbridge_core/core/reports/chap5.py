@@ -57,7 +57,9 @@ from osdagbridge_core.core.utils.common import (
     KEY_DD_RAILING_LOAD_KGM,
     KEY_DD_RAILING_LOAD_KNM,
     KEY_DD_SHEAR_OK,
+    KEY_DD_SHEAR_VDL,
     KEY_DD_SHEAR_VED,
+    KEY_DD_SHEAR_VLL,
     KEY_DD_SHEAR_VRDC,
     KEY_DD_SPACING_MAX,
     KEY_DD_SPAN,
@@ -1593,7 +1595,19 @@ Punching Shear Check & $v_{Ed} \leq v_{Rd,c}$ & """ + (f"{_dkv(KEY_DD_PUNCH_VED)
     widths=[5.5, 3.5, 4.5, 2.0],
     align=["L", "C", "C", "C"], longtable=True, escape=False,
     body_latex=r"""
-Design Shear per unit width, $V_{Ed}$ & $\gamma_{DL} V_{DL} + \gamma_{LL}(1{+}IF)V_{LL}$ & """ + _dkf(KEY_DD_SHEAR_VED, nd=2) + r""" kN/m & --- \\[6pt]
+Dead-Load Shear, $V_{DL}$ & $w_{DL}\,l_{eff}/2$ & """ + _dkf(KEY_DD_SHEAR_VDL, nd=2) + r""" kN/m & --- \\[6pt]
+\hline
+Live-Load Shear, $V_{LL}$ & $P_w/b_{eff}$ & """ + _dkf(KEY_DD_SHEAR_VLL, nd=2) + r""" kN/m & --- \\[6pt]
+\hline
+Dead-Load Factor, $\gamma_{DL}$ & IRC 6-2017 Table B.2 & """ + _dkf(KEY_DD_GAMMA_DL, nd=2) + r""" & --- \\[6pt]
+\hline
+Live-Load Factor, $\gamma_{LL}$ & IRC 6-2017 Table B.2 & """ + _dkf(KEY_DD_GAMMA_LL, nd=2) + r""" & --- \\[6pt]
+\hline
+Impact Fraction, $IF$ & """ + _dk_ll_ref + r""" & """ + (f"{_dk_i_frac:.3f}" if _dk_has else _DKPH) + r""" & --- \\[6pt]
+\hline
+Impact Multiplier, $(1+IF)$ & $1 + IF$ & """ + _dkf(KEY_DD_IMPACT_FACTOR, nd=3) + r""" & --- \\[6pt]
+\hline
+Design Shear per unit width, $V_{Ed}$ & $\gamma_{DL} V_{DL} + \gamma_{LL}(1{+}IF)V_{LL}$ = (""" + _dkf(KEY_DD_GAMMA_DL, nd=2) + r""" $\times$ """ + _dkf(KEY_DD_SHEAR_VDL, nd=2) + r""") + [""" + _dkf(KEY_DD_GAMMA_LL, nd=2) + r""" $\times$ """ + _dkf(KEY_DD_IMPACT_FACTOR, nd=3) + r""" $\times$ """ + _dkf(KEY_DD_SHEAR_VLL, nd=2) + r"""] & """ + _dkf(KEY_DD_SHEAR_VED, nd=2) + r""" kN/m & --- \\[6pt]
 \hline
 Effective depth, $d$ & $t_s - c_{nom} - \phi/2$ & """ + _dkf(KEY_DD_D_BOT, nd=1) + r""" mm & --- \\[6pt]
 \hline
