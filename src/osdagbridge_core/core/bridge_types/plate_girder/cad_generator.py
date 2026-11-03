@@ -1075,10 +1075,16 @@ class PlateGirderCADGenerator:
 
             return solids if solids else [shape]
 
-        # Collect shapes from model_data, excluding support geometry from export.
+        skip_keys = {
+            "supports", "supports_tri", "supports_cyl", "supports_vertical",
+            "supports_wide_horiz", "supports_long_horiz", "support_groups",
+            "girder_web", "girder_flanges", "girder_top_flanges",
+            "girder_bottom_flanges", "girder_groups", "intermediate_stiffeners",
+            "bearing_stiffeners", "longitudinal_stiffeners", "cross_bracing_groups",
+        }
         shapes = []
         for key, v in self.model_data.items():
-            if key in {"supports", "supports_tri", "supports_cyl"}:
+            if key in skip_keys:
                 continue
             shapes.extend(_flatten(v))
 
