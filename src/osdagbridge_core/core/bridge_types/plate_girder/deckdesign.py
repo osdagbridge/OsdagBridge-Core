@@ -36,6 +36,8 @@ from osdagbridge_core.core.utils.common import (
     KEY_DD_M_ULS_HOG, KEY_DD_D_BOT, KEY_DD_D_TOP,
     KEY_DD_MU_BOT, KEY_DD_MU_TOP, KEY_DD_AS_REQ_BOT,
     KEY_DD_AS_REQ_TOP, KEY_DD_XU_BOT, KEY_DD_XU_TOP, KEY_DD_M_BARRIER,
+    KEY_DD_D_REQ_TOP, KEY_DD_AS_FLEX_TOP, KEY_DD_XU_FLEX_TOP, KEY_DD_AS_MIN_TOP,
+    KEY_DD_AS_CRACK_TOP,
     KEY_DD_M_DL_OH, KEY_DD_M_LL_OH, KEY_DD_M_ULS_OH,
     KEY_DD_D_OH, KEY_DD_MU_OH, KEY_DD_AS_REQ_OH,
     KEY_DD_OVERHANG_LEN, KEY_DD_EDGE_CLEARANCE,
@@ -658,8 +660,10 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     # Top mat must also satisfy the composite crack-control minimum (Cl.604.4) so
     # that a thicker slab cannot fail crack control (which scales with slab depth).
     As_crack_min_top = _crack_control_min_top_steel_mm2_per_m(fctm, fy, deck_t_mm)
-    As_req_top = max(_required_steel_mm2(M_ULS_top_kNm / _TIGHTEN_TARGET_UR, fy, d_top_mm, fck),
-                     _min_steel_mm2(fctm, fy, d_top_mm), As_crack_min_top)
+    d_req_top_mm = d_top_mm
+    As_flex_top = _required_steel_mm2(M_ULS_top_kNm / _TIGHTEN_TARGET_UR, fy, d_req_top_mm, fck)
+    As_min_top = _min_steel_mm2(fctm, fy, d_req_top_mm)
+    As_req_top = max(As_flex_top, As_min_top, As_crack_min_top)
     dia_top, spc_top, As_top = _pick_rebar(As_req_top, allowed_dias)
     d_top_mm = deck_t_mm - cover_top_mm - dia_top / 2.0
     As_req_top2 = max(_required_steel_mm2(M_ULS_top_kNm / _TIGHTEN_TARGET_UR, fy, d_top_mm, fck),
@@ -1182,6 +1186,11 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         KEY_DD_AS_REQ_TOP     : As_req_top,
         KEY_DD_XU_BOT         : xu_bot,
         KEY_DD_XU_TOP         : xu_top,
+        KEY_DD_D_REQ_TOP      : d_req_top_mm,
+        KEY_DD_AS_FLEX_TOP    : As_flex_top,
+        KEY_DD_XU_FLEX_TOP    : _neutral_axis_depth_mm(fy, As_flex_top, fck),
+        KEY_DD_AS_MIN_TOP     : As_min_top,
+        KEY_DD_AS_CRACK_TOP   : As_crack_min_top,
         # -- 5.17(c) cantilever overhang flexure --
         KEY_DD_M_BARRIER      : M_barrier_kNm,
         KEY_DD_M_DL_OH        : M_DL_oh,
