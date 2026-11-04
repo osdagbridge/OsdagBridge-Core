@@ -695,6 +695,9 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
                 (KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, ceil_to_sail(section_props['t_f_bot'] * 1e3)),
                 (KEY_MP_GIRDER_WEB_THICKNESS,           ceil_to_sail(section_props['t_w'] * 1e3)),
             ]
+            # Web depth follows the SAIL-snapped flange thicknesses above
+            _tf = [float(v) for k, v in MP_GIRDER_PROPS if k in (KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS)]
+            MP_GIRDER_PROPS = [(k, round(section_props['D'] * 1e3 - sum(_tf)) if k == KEY_MP_GIRDER_WEB_DEPTH else v) for k, v in MP_GIRDER_PROPS]
 
         # --- Populate dynamic girder keys for each girder and member ---
         # girder_idx : 1 to no_of_girders (driven by user input)

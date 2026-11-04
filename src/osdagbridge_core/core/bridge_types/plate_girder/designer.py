@@ -235,6 +235,14 @@ class SteelSection:
         self.Iz_steel = props[KEY_MP_GIRDER_SECTIONAL_IZ]         # strong-axis second moment (mm^4)
         self.Zp_steel = props[KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ]  # plastic section modulus (mm^3)
         self.Ze_steel = props[KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ]   # elastic section modulus (mm^3)
+        self.Iy_steel  = props[KEY_MP_GIRDER_SECTIONAL_IY]         # weak-axis second moment (mm^4)
+        self.rz_steel  = props[KEY_MP_GIRDER_RADIUS_GYRATION_Z]    # radius of gyration, strong axis (mm)
+        self.ry_steel  = props[KEY_MP_GIRDER_RADIUS_GYRATION_Y]    # radius of gyration, weak axis (mm)
+        self.Zey_steel = props[KEY_MP_GIRDER_ELASTIC_MODULUS_ZY]   # weak-axis elastic modulus (mm^3)
+        self.Zpy_steel = props[KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY]  # weak-axis plastic modulus (mm^3)
+        self.It_steel  = props[KEY_MP_GIRDER_TORSION_CONSTANT_IT]  # torsion constant (mm^4)
+        self.Iw_steel  = props[KEY_MP_GIRDER_WARPING_CONSTANT_IW]  # warping constant (mm^6)
+        self.mass      = props[KEY_MP_GIRDER_MASS] * 1e-6          # density x mm^2 -> kg/m
 
         # A rolled section's whole-section properties come from the IS catalogue
         # (sqlite), which includes the web-flange root fillets the plate equations
@@ -3584,6 +3592,18 @@ def run_design_check(
                 "designation"  : g_config.section.designation,
                 "beff_mm"      : g_cap.beff_mm,
                 "section_class": g_cap.details["section_class"]["governing_class"],
+                "A_steel_mm2"  : g_config.section.A_steel,
+                "Iz_steel_mm4" : g_config.section.Iz_steel,
+                "Ze_steel_mm3" : g_config.section.Ze_steel,
+                "Zp_steel_mm3" : g_config.section.Zp_steel,
+                "Iy_steel_mm4" : g_config.section.Iy_steel,
+                "rz_steel_mm"  : g_config.section.rz_steel,
+                "ry_steel_mm"  : g_config.section.ry_steel,
+                "Zey_steel_mm3": g_config.section.Zey_steel,
+                "Zpy_steel_mm3": g_config.section.Zpy_steel,
+                "It_steel_mm4" : g_config.section.It_steel,
+                "Iw_steel_mm6" : g_config.section.Iw_steel,
+                "mass_kg_m"    : g_config.section.mass,
             },
             "_engine"  : g_engine,
             "_capacity": g_cap,
@@ -3653,6 +3673,14 @@ def run_design_check(
         "Iz_steel_mm4"              : round(_sec.Iz_steel, 0),
         "Ze_steel_mm3"              : round(_sec.Ze_steel, 0),
         "Zp_steel_mm3"              : round(_sec.Zp_steel, 0),
+        "Iy_steel_mm4"              : _sec.Iy_steel,
+        "rz_steel_mm"               : _sec.rz_steel,
+        "ry_steel_mm"               : _sec.ry_steel,
+        "Zey_steel_mm3"             : _sec.Zey_steel,
+        "Zpy_steel_mm3"             : _sec.Zpy_steel,
+        "It_steel_mm4"              : _sec.It_steel,
+        "Iw_steel_mm6"              : _sec.Iw_steel,
+        "mass_kg_m"                 : _sec.mass,
         "y_cg_from_bot_mm"          : round(_sec.y_cg_from_bot, 2),
         "fabrication"               : _sec.fabrication,
         "designation"               : _sec.designation,
