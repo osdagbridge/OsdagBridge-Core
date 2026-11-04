@@ -86,6 +86,15 @@ from osdagbridge_core.core.reports.report_utils import (
     render_parameter_value_table
 )
 
+def _analysis_notes(output_dict):
+    """What the setu engine did not follow, stated in the report; empty for ospgrillage."""
+    notes = (output_dict or {}).get("setu_simplifications")
+    if notes is None:
+        return ""
+    items = ["Class SV and Class 70R Bogie are not analysed: these results leave them out.", *(f"{note}." for note in notes)]
+    return "\n\\vspace{1em}\n\\noindent\\textbf{Analysis notes (setu engine)}\n\\begin{itemize}\n" + "\n".join(f"\\item {item}" for item in items) + "\n\\end{itemize}\n"
+
+
 def ch3_loads(input_dict, output_dict=None):
     output_dict = output_dict if output_dict is not None else {}
     # Live load vehicle names mapping
@@ -520,6 +529,6 @@ WL denotes transverse, longitudinal and vertical wind on the structure.
 Wind on live load is added at the WL factor when both WL and LL are present.
 
 \noindent\textit{Note: Saved selections retain their original IDs and expressions. A listed term does not confirm that its load case was applied in the analysis.}
-"""
+""" + _analysis_notes(output_dict)
 
 
