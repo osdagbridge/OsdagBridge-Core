@@ -12,6 +12,7 @@ from .bridge_input import (bridge_input, construction_loads, construction_seismi
                            reconcile_layout, seismic_site, temperature_site, wind_site, workers_that_fit)
 from .girder_demands import case_demand, deflections_cache, girder_demands
 from .live_load_report import live_load_report_values
+from .run_progress import RunProgress
 from .plot_dataset import CaseForces, load_states, member_nodes, plot_dataset
 from .unsupported_inputs import check_capability, simplifications
 
@@ -39,6 +40,7 @@ def plan_run(d):
     nodes, gb = estimated_peak_gb(d)
     available = available_memory_gb()
     workers = workers_that_fit(MOST_WORKERS, gb, available)
+    bridge_logger._emit("__progress__16", "progress")
     bridge_logger.sub_step(f"setu: {nodes} deck nodes, estimated peak about {gb:.1f} GB, {workers} workers")
     if available is not None and gb > available:
         bridge_logger.warning(f"This bridge may need about {gb:.1f} GB with only {available:.1f} GB free; close other programs or expect it to be slow")
@@ -47,9 +49,11 @@ def plan_run(d):
 
 # The whole analysis in its own process: Stop ends it at once and its memory returns to the system when it finishes.
 def solve(bridge_in, wind, seismic, temperature, braking_height_m, workers, **extras):
+    tracker = RunProgress(extras.get("special_vehicle", False), extras.get("construction") is not None)
     values, forces = solve_in_own_process(
         bridge_in, wind, seismic, temperature, braking_height_m, workers=workers,
-        phase=lambda text: bridge_logger.sub_step(f"setu: {text}"), check=bridge_logger.check_cancel, **extras)
+        phase=tracker.phase, progress=tracker.counts, check=bridge_logger.check_cancel, **extras)
+    tracker.finish()
     return values, report_forces(forces)
 
 
