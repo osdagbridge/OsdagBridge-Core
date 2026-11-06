@@ -96,7 +96,7 @@ from osdagbridge_core.core.utils.common import (
     KEY_WC_THICKNESS,
     KEY_LL_ECCENTRICITY,
     KEY_WC_DENSITY,
-    KEY_MP_GIRDER_SYMMETRY, KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_WEB_DEPTH, KEY_MP_GIRDER_WEB_THICKNESS,
+    KEY_MP_GD_SEGMENT_TABLE, KEY_MP_GIRDER_SYMMETRY, KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_WEB_DEPTH, KEY_MP_GIRDER_WEB_THICKNESS,
     KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
     KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
     KEY_MP_GIRDER_SECTIONAL_AREA, KEY_MP_GIRDER_MASS,
@@ -2847,6 +2847,22 @@ class PlateGirderBridge:
 
         num_girders = int(self.output_dict[KEY_TS_NO_OF_GIRDERS])
         stiffeners_dict = {}
+        girder_segments_dict = {}
+
+        for i in range(num_girders):
+            girder_segments_dict[i] = []
+            for seg in inp[f"{KEY_MP_GD_SEGMENT_TABLE}.G{i + 1}"]:
+                mi = int(re.fullmatch(r"G\d+M(\d+)", str(seg["id"]).strip()).group(1))
+                suffix = f".G{i + 1}.M{mi}"
+                girder_segments_dict[i].append(GirderSegmentDTO(
+                    length=(seg["end"] - seg["start"]) * 1e3,
+                    D=inp[f"{KEY_MP_GIRDER_DEPTH}{suffix}"] * 1e3,
+                    tw=inp[f"{KEY_MP_GIRDER_WEB_THICKNESS}{suffix}"] * 1e3,
+                    T_ft=inp[f"{KEY_MP_GIRDER_TOP_FLANGE_THICKNESS}{suffix}"] * 1e3,
+                    T_fb=inp[f"{KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS}{suffix}"] * 1e3,
+                    B_ft=inp[f"{KEY_MP_GIRDER_TOP_FLANGE_WIDTH}{suffix}"] * 1e3,
+                    B_fb=inp[f"{KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH}{suffix}"] * 1e3,
+                ))
 
         for i in range(num_girders):
             gi = i + 1
@@ -3063,7 +3079,7 @@ class PlateGirderBridge:
             ),
             # --- Girder segments (single uniform segment) ---
             girder_segments=[girder_segment],
-            girder_segments_dict={},
+            girder_segments_dict=girder_segments_dict,
             stiffeners_dict=stiffeners_dict,
             output_dict=self.output_dict,
         )
