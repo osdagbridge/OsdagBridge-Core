@@ -18,7 +18,7 @@ from osdagbridge_core.core.solvers.setu.unsupported_inputs import check_capabili
 from osdagbridge_core.core.solvers.setu.girder_demands import girder_demands, raw_deflections
 from setu import MeshSettings
 from osdagbridge_core.core.solvers.setu.bridge_input import (
-    added_dead_loads, brace_value, bracing, bridge_input, cross_section, estimated_peak_gb, normalise_gui_bracing, workers_that_fit, reconcile_layout, seismic_site, temperature_site, wind_site)
+    added_dead_loads, brace_value, bracing, bridge_input, cross_section, analysis_gb, estimated_peak_gb, normalise_gui_bracing, with_workers_gb, worker_gb, workers_that_fit, reconcile_layout, seismic_site, temperature_site, wind_site)
 
 
 # Prepare the GUI inputs without building a structural model.
@@ -327,10 +327,18 @@ def test_peak_estimate_grows_with_width():
     assert estimated_peak_gb(wide)[1] > estimated_peak_gb(narrow)[1]
 
 
-# Workers fit the free memory, up to the cap and never below one.
-@pytest.mark.parametrize("available,workers", [(None, 4), (20.0, 4), (4.0, 2), (2.5, 1), (0.5, 1)])
+# Workers fit the free memory beside the analysis and a reserve, up to the cap; one (no workers) when two do not fit or memory is unknown.
+@pytest.mark.parametrize("available,workers", [(None, 1), (20.0, 4), (5.0, 2), (4.0, 1), (0.5, 1)])
 def test_workers_that_fit(available, workers):
-    assert workers_that_fit(4, 2.0, available) == workers
+    assert workers_that_fit(4, 2.0, 1.0, available) == workers
+
+
+# The estimates give the measured peaks: the analysis alone, and whole runs with 2 or 4 workers.
+def test_memory_estimate_matches_the_measured_decks():
+    for nodes, measured_gb in ((3021, 0.33), (9911, 1.14), (18391, 3.84)):
+        assert analysis_gb(nodes) == pytest.approx(measured_gb, abs=0.02)
+    for nodes, workers, measured_gb in ((3021, 2, 0.53), (3021, 4, 0.81), (9911, 2, 1.04), (9911, 4, 1.56), (18391, 4, 2.75)):
+        assert with_workers_gb(nodes) + workers * worker_gb(nodes) == pytest.approx(measured_gb, abs=0.02)
 
 
 # Channel and single angle sections give the database area, doubled for double sections.

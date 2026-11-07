@@ -1,15 +1,15 @@
 import os
-import sys
 from time import perf_counter
 
 from setu.postprocess.own_process import solve_in_own_process
 from osdagbridge_core.core.bridge_types.plate_girder.designer import BridgeConfig
 from osdagbridge_core.core.utils import common as C
 from osdagbridge_core.core.utils.logger import bridge_logger
+from osdagbridge_core.core.utils.os_specific import available_memory_gb
 from setu.irc6.temperature import effective_temperature_range
 from setu.irc6.wind import design_wind_speed_mps, wind_pressure_pa
 from .bridge_input import (bridge_input, construction_loads, construction_seismic_site, estimated_peak_gb, fill_unequal_depth_wind, normalise_gui_bracing,
-                           reconcile_layout, seismic_site, temperature_site, wind_site, workers_that_fit)
+                           reconcile_layout, seismic_site, temperature_site, wind_site, with_workers_gb, worker_gb, workers_that_fit)
 from .girder_demands import case_demand, deflections_cache, girder_demands
 from .live_load_report import live_load_report_values
 from .run_progress import RunProgress
@@ -17,31 +17,22 @@ from .plot_dataset import CaseForces, load_states, member_nodes, plot_dataset
 from .unsupported_inputs import check_capability, simplifications
 
 
-# Workers forked after the factor exists read one copy of it, so they cost far less than separate models.
-MOST_WORKERS = min(4, max(1, (os.cpu_count() or 2) - 1))
-
-
-# What the system can give out now, or None where it cannot be asked.
-def available_memory_gb():
-    try:
-        if sys.platform == "darwin":
-            from osdagbridge_core.core.utils import macos_memory
-            return macos_memory.available_gb()
-        if sys.platform.startswith("linux"):
-            with open("/proc/meminfo") as meminfo:
-                return next(int(line.split()[1]) for line in meminfo if line.startswith("MemAvailable:")) / 1024 ** 2
-    except (OSError, ValueError, AttributeError, StopIteration):
-        pass
-    return None
+# One core is left for the analysis process, which solves every surface for the workers; measured (2026-11-07, setu 2693a09, 10-core
+# Mac) it keeps at most about four busy: 2x11 m deck 99 / 103 / 108 s with 4 / 6 / 9 workers, 52 m deck 600 / 619 s with 4 / 6, each
+# worker past four costing memory for nothing. Memory may allow fewer (workers_that_fit).
+MOST_WORKERS = max(1, min(4, (os.cpu_count() or 2) - 1))
 
 
 # Say how big the run is, warn if it may not fit, and choose the workers that do.
 def plan_run(d):
-    nodes, gb = estimated_peak_gb(d)
+    nodes, alone = estimated_peak_gb(d)
     available = available_memory_gb()
-    workers = workers_that_fit(MOST_WORKERS, gb, available)
+    main, each = with_workers_gb(nodes), worker_gb(nodes)
+    workers = workers_that_fit(MOST_WORKERS, main, each, available)
+    gb = main + each * workers if workers > 1 else alone
     bridge_logger._emit("__progress__16", "progress")
-    bridge_logger.sub_step(f"setu: {nodes} deck nodes, estimated peak about {gb:.1f} GB, {workers} workers")
+    free = "free memory unknown, so no workers" if available is None else f"{available:.1f} GB free"
+    bridge_logger.sub_step(f"setu: {nodes} deck nodes, estimated peak about {gb:.1f} GB with {workers} worker{'s' if workers > 1 else ''} ({free})")
     if available is not None and gb > available:
         bridge_logger.warning(f"This bridge may need about {gb:.1f} GB with only {available:.1f} GB free; close other programs or expect it to be slow")
     return workers
