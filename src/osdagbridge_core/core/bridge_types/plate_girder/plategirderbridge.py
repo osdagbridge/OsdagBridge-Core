@@ -226,6 +226,10 @@ from osdagbridge_core.core.utils.common import (
     KEY_SD_DEFL_DL_RAW,
     KEY_SD_DEFL_ALLOW_LIVE,
     KEY_SD_DEFL_ALLOW_TOTAL,
+    # Permanent load summary
+    KEY_SD_DL_SW, KEY_SD_DL_DC, KEY_SD_DL_DD, KEY_SD_DL_DW, KEY_SD_DL_SIDL, KEY_SD_PERMANENT_DL,
+    KEY_TD_CB_PROP_A, KEY_TD_CB_TOP_CHORD_PROP_A, KEY_TD_CB_BOTTOM_CHORD_PROP_A,
+    KEY_TD_ED_PROP_A, KEY_TD_ED_TOP_CHORD_PROP_A, KEY_TD_ED_BOTTOM_CHORD_PROP_A,
     # Stiffener table
     KEY_SD_STIFFENER_ROW_INTERMEDIATE,
     KEY_SD_STIFFENER_ROW_LONGITUDINAL,
@@ -255,6 +259,9 @@ from osdagbridge_core.core.bridge_types.plate_girder.initial_sizing import (
 )
 from osdagbridge_core.core.bridge_components.super_structure.deck.geometry import (
     deck_thickness_from_inputs,
+)
+from osdagbridge_core.core.bridge_components.super_structure.plate_girder.geometry import (
+    girder_self_weight_kN_m, STEEL_UNIT_WEIGHT_kN_m3,
 )
 from osdagbridge_core.core.bridge_components.super_structure.crash_barrier.geometry import (
     crash_barrier_load_from_inputs,
@@ -704,6 +711,31 @@ class PlateGirderBridge:
         self.output_dict["crossbracing_design_results"] = self.crossbracing_design_results
         self.end_diaphragm_design_results = self._design_end_diaphragm_members()
         self.output_dict["end_diaphragm_design_results"] = self.end_diaphragm_design_results
+
+        # DC (kN/m per girder): designed cross bracing + end diaphragm steel, area × 78.5 kN/m³, averaged
+        # over span × girders like DD / DW / SIDL, and added to the total DL written in add_dead_loads().
+        od = self.output_dict
+        area = lambda key, pid: float(od.get(f"{key}.{pid}") or 0.0) / 1e4   # cm² → m²; absent member → 0
+        vol = 0.0
+        for pair, g in ((od.get("crossbracing_forces_dict") or {}).get("geometry") or {}).items():
+            pid = pair.replace("-", "")
+            vol += g["no_of_cross_bracings"] * (2 * g["diagonal_length_m"] * area(KEY_TD_CB_PROP_A, pid)
+                   + g["girder_spacing_m"] * (area(KEY_TD_CB_TOP_CHORD_PROP_A, pid) + area(KEY_TD_CB_BOTTOM_CHORD_PROP_A, pid)))
+        ed_geom = (od.get("end_diaphragm_forces_dict") or {}).get("geometry") or {}
+        s = float(self.input_dict[KEY_TS_GIRDER_SPACING])
+        n = len(self.grillage_model.girder_props)
+        for i in range(1, n):
+            pid = f"G{i}G{i + 1}"
+            L_d = (ed_geom.get(f"G{i}-G{i + 1}") or {}).get("diagonal_length_m")
+            # One end diaphragm at each support: a braced frame (2 diagonals + chords) or a beam across the spacing.
+            per_end = (2 * L_d * area(KEY_TD_ED_PROP_A, pid)
+                       + s * (area(KEY_TD_ED_TOP_CHORD_PROP_A, pid) + area(KEY_TD_ED_BOTTOM_CHORD_PROP_A, pid))
+                       if L_d else s * area(KEY_TD_ED_PROP_A, pid))
+            vol += 2 * per_end
+        dc = vol * STEEL_UNIT_WEIGHT_kN_m3 / (self.grillage_model.L * n)
+        od[KEY_SD_DL_DC] = dc
+        for gi in range(1, n + 1):
+            od[f"{KEY_SD_PERMANENT_DL}.G{gi}"] += dc
         return self.crossbracing_design_results
 
     def design(self) -> None:
@@ -1406,6 +1438,20 @@ class PlateGirderBridge:
         model.create_railing_load(railing_load_kN_per_m=railing_load_kN_m)
         model.create_median_load()
         model.create_dead_load_combination(partial_safety_factor=1.0)
+
+        # Permanent load summary (kN/m): SW per girder, same value applied above; DD / DW / SIDL
+        # are each applied load case's total averaged over the girders. DC is not applied anywhere.
+        span_x_n = model.L * len(model.girder_props)
+        dd   = model._load_case_resultant_kN(model.deck_load_case) / span_x_n
+        dw   = model._load_case_resultant_kN(model.wearing_course_load) / span_x_n
+        sidl = sum(model._load_case_resultant_kN(lc) for lc in (
+            model.footpath_load_case, model.crash_barrier_load_case,
+            model.railing_load_case, model.median_load_case)) / span_x_n
+        self.output_dict.update({KEY_SD_DL_DD: dd, KEY_SD_DL_DW: dw, KEY_SD_DL_SIDL: sidl})
+        for gi, props in enumerate(model.girder_props, start=1):
+            sw = girder_self_weight_kN_m(props.A)
+            self.output_dict[f"{KEY_SD_DL_SW}.G{gi}"] = sw
+            self.output_dict[f"{KEY_SD_PERMANENT_DL}.G{gi}"] = sw + dd + dw + sidl
 
     # ─────────────────────────────────────────────────────────────────────────
     # Live loads — vehicle and moving loads applied after the grillage model

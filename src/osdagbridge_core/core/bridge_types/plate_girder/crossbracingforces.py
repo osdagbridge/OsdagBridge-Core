@@ -1423,6 +1423,7 @@ class EndDiaphragmForces:
                         pair_forces = fallback_pair_forces
 
                 forces_dict["pairs"][pair] = pair_forces
+                forces_dict.setdefault("geometry", {})[pair] = {"diagonal_length_m": round(L_d, 4)}
 
                 # Run Osdag design checks
                 from osdagbridge_core.core.utils.connect import (
