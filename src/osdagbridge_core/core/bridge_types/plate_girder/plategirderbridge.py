@@ -25,6 +25,7 @@ from .analyser import BridgeGrillageModel
 from osdagbridge_core.core.utils.memory_guard import OpsMemoryGuard, log_memory, tracemalloc_mark_start
 from .analysis_results import PlateGirderAnalysisResults
 from .designer import run_design_check
+from osdagbridge_core.core.reports.report_utils import publish_girder_outputs
 from . import deckdesign
 from .plot_generator import (
     build_figure_sfd,
@@ -2501,6 +2502,7 @@ class PlateGirderBridge:
         # store_design_results also sets the KEY_UTIL_* values so the block
         # below is redundant — but kept for the _frontend.set_output_value calls.
         self.store_design_results(design_results)
+        publish_girder_outputs(self)
 
         # Log the girder verdict (reads it from output_dict)
         bridge_logger.girder_verdict(self.output_dict)

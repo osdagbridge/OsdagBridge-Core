@@ -1,19 +1,235 @@
 import os
 import re
+from copy import copy
 
 import matplotlib
 matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt
 
+from osdagbridge_core.core.bridge_types.plate_girder.designer import BridgeConfig
 from osdagbridge_core.core.utils.common import (
     KEY_BOQ_END_DIAPHRAGM_WEIGHT_T,
     KEY_MP_GD_MEMBER_ID,
     KEY_MP_GD_SELECT_GIRDER,
+    KEY_SD_MU_APPLIED,
+    KEY_SD_MD_CAPACITY,
+    KEY_UTIL_FLEXURE,
+    KEY_SD_SHEAR_VU,
+    KEY_SD_SHEAR_VCR,
+    KEY_UTIL_SHEAR,
+    KEY_SD_MDV,
+    KEY_UTIL_INTERACTION,
+    KEY_SD_MN_RATIO,
+    KEY_SD_LTB_MB,
+    KEY_UTIL_LTB,
+    KEY_SD_IS_IYS_MIN,
+    KEY_SD_IS_IYS_PROV,
+    KEY_SD_IS_FQ,
+    KEY_SD_IS_FQD,
+    KEY_SD_BS_R,
+    KEY_SD_BS_FCDW_WB,
+    KEY_SD_BS_FCDW_LC,
+    KEY_SD_BS_FPSD,
+    KEY_SD_BS_FCD,
+    KEY_SD_STRESS_STEEL,
+    KEY_SD_STRESS_STEEL_ALLOWABLE,
+    KEY_DESIGN_MODE,
+    KEY_SD_SECTION_PROP_IV,
+    KEY_SD_SECTION_PROP_IT,
+    KEY_SD_SECTION_PROP_IW,
+    KEY_SD_FLANGE_SLENDERNESS,
+    KEY_SD_SHEAR_AV,
+    KEY_SD_HIGH_SHEAR,
+    KEY_SD_MN_AXIAL,
+    KEY_SD_MN_MOMENT,
+    KEY_SD_STIFF_METHOD,
+    KEY_SD_STIFF_INT_THICK,
+    KEY_SD_STIFF_INT_SPACING,
+    KEY_SD_STIFF_END_THICK,
+    KEY_SD_STIFF_END_COUNT,
+    KEY_MP_GIRDER_SECTIONAL_IY,
+    KEY_MP_GIRDER_TORSION_CONSTANT_IT,
+    KEY_MP_GIRDER_WARPING_CONSTANT_IW,
+    KEY_MP_STIFFENER_LONGITUDINAL,
     KEY_TS_NO_OF_GIRDERS,
 )
 
 _GROUPED_TABLE_PROBE = False
 _GROUPED_TABLE_BREAKS = set()
+
+_GIRDER_LTB_PROPERTIES = (
+    (KEY_MP_GIRDER_SECTIONAL_IY, KEY_SD_SECTION_PROP_IV, "Iy_mm4", 1e-12),
+    (KEY_MP_GIRDER_TORSION_CONSTANT_IT, KEY_SD_SECTION_PROP_IT, "It_mm4", 1e-12),
+    (KEY_MP_GIRDER_WARPING_CONSTANT_IW, KEY_SD_SECTION_PROP_IW, "Iw_mm6", 1e-18),
+)
+_MN_REPORT_KEYS = (KEY_SD_MN_AXIAL, KEY_SD_MN_MOMENT, KEY_SD_MN_RATIO)
+
+# Check ID, name, ratio key, owned key prefixes, individually owned keys.
+_GIRDER_REPORT_SECTIONS = (
+    (1, None, KEY_UTIL_FLEXURE, (KEY_SD_MU_APPLIED, KEY_SD_FLANGE_SLENDERNESS, KEY_SD_SECTION_PROP_IV), ()),
+    (2, "ULS Shear Buckling", KEY_UTIL_SHEAR, (KEY_SD_SHEAR_AV, KEY_SD_STIFF_METHOD, KEY_SD_IS_IYS_MIN), ()),
+    (3, None, KEY_UTIL_INTERACTION, (), (KEY_SD_HIGH_SHEAR, KEY_SD_MDV)),
+    (4, None, KEY_SD_MN_RATIO, (), _MN_REPORT_KEYS),
+    (5, "LTB (Construction Stage)", KEY_UTIL_LTB, (KEY_SD_LTB_MB,), tuple(row[1] for row in _GIRDER_LTB_PROPERTIES)),
+)
+_CHECK_FALLBACK_FIELDS = {
+    1: (KEY_SD_MU_APPLIED, KEY_SD_MD_CAPACITY),
+    2: (KEY_SD_SHEAR_VU, KEY_SD_SHEAR_VCR),
+    3: (None, KEY_SD_MDV),
+    5: (None, KEY_SD_LTB_MB),
+}
+# Keep check-row precision and availability for the existing stiffener tables.
+_STIFFENER_CHECK_FIELDS = (
+    (20, "Int.Stiff: Iys \u2265 Iys_min", KEY_SD_IS_IYS_MIN, KEY_SD_IS_IYS_PROV),
+    (20, "Int.Stiff: Buckling Fqd\u2265Fq", KEY_SD_IS_FQ, KEY_SD_IS_FQD),
+    (21, "Brg.Stiff: Web Buckling", KEY_SD_BS_R, KEY_SD_BS_FCDW_WB),
+    (21, "Brg.Stiff: Local Crushing", KEY_SD_BS_R, KEY_SD_BS_FCDW_LC),
+    (21, "Brg.Stiff: Bearing Contact", KEY_SD_BS_R, KEY_SD_BS_FPSD),
+    (21, "Brg.Stiff: Column Buckling", KEY_SD_BS_R, KEY_SD_BS_FCD),
+)
+
+
+def _governing_check(record, check_id, label=None):
+    """Return the governing (load case, check), retaining older girder-summary results."""
+    labels = (label, "ULS Shear") if check_id == 2 and label == "ULS Shear Buckling" else (label,)
+    for name in labels:
+        candidates = [(case, check) for case, data in (record.get("per_lc") or {}).items()
+                      for check in data.get("checks", [])]
+        candidates += [(None, check) for check in record.get("checks") or []]
+        matches = [(case, check) for case, check in candidates
+                   if check.get("check_id", check.get("id")) == check_id
+                   and (name is None or check.get("name", check.get("label")) == name)]
+        for source in ([item for item in matches if item[0] is not None],
+                       [item for item in matches if item[0] is None]):
+            if source:
+                return max(source, key=lambda item: item[1].get("dcr") or 0)
+    return None, None
+
+
+def _check_values(check, fields):
+    return {key: check.get(field) for key, field in zip(fields, ("demand", "capacity")) if key is not None}
+
+
+def _girder_publisher_results(backend, config, record, engine):
+    """Supply the existing publisher with this case's final section and calculated fields."""
+    section, capacity = config.section, engine.capacity
+    details = capacity.details
+    classification, buckling = details["section_class"], details["buckling_resistance"]
+    intermediate, bearing = details.get("intermediate_stiffener") or {}, details.get("bearing_stiffener") or {}
+    results = {**backend.design_results, **vars(capacity), **vars(engine.demand), **record["section"]}
+    results.update(classification, per_girder={}, capacity_details=details, category_urs=engine.category_urs(),
+                   A_steel_mm2=section.A_steel, Iz_steel_mm4=section.Iz_steel,
+                   Ze_steel_mm3=section.Ze_steel, Zp_steel_mm3=section.Zp_steel,
+                   section_class_governing=classification["governing_class"],
+                   ltb_LLT_mm=buckling["LLT_mm"], ltb_Mpl_kNm=buckling["Mpl_kNm"],
+                   stiff_method=capacity.shear_method,
+                   stiff_int_thick_req=intermediate.get("tq_req_1sided_mm"),
+                   stiff_int_space_req=intermediate.get("c_req_min_mm"),
+                   stiff_end_thick_req=bearing.get("tq_req_bearing_mm"))
+    for side in ("web", "flange"):
+        results[f"{side}_class_limit"] = classification[f"{side}_limit"]
+        results[f"section_class_{side}"] = classification[f"{side}_class"]
+    for target, source in (("is_tq_mm", "tq_mm"), ("is_c_mm", "c_mm"),
+                           ("bs_tq_mm", "bs_tq_mm"), ("bs_n_plates", "bs_n_plates")):
+        results[target] = getattr(config.stiffener, source, 0)
+    panel = details["shear_buckling"]["c_mm"]
+    results["panel_cd_ratio"] = round(panel / section.dw, 3) if panel > 0 else None
+    return results
+
+
+def _girder_publisher_inputs(backend, index, buckling):
+    """Give the existing publisher this member's inputs, without changing bridge state."""
+    inputs = dict(backend.input_dict)
+    suffix, member = f".G{index + 1}.M1", f"G{index + 1}M1"
+    inputs.update((key[:-len(suffix)], value) for key, value in backend.input_dict.items()
+                  if isinstance(key, str) and key.endswith(suffix))
+    stiffeners = (backend.input_dict.get("stiffener_by_member") or {}).get(member) or {}
+    inputs["stiffener_by_member"] = {member: dict(stiffeners, longitudinal_stiffener=
+        inputs.get(KEY_MP_STIFFENER_LONGITUDINAL, stiffeners.get("longitudinal_stiffener", "No")))}
+    inputs.update((source, buckling[field] * scale) for source, _, field, scale in _GIRDER_LTB_PROPERTIES)
+    return inputs
+
+
+def _publish_girder_case(backend, index, config, record, engine):
+    """Reuse the publisher, retaining the existing report's Custom-size precision."""
+    publisher = copy(backend)
+    publisher.input_dict = _girder_publisher_inputs(backend, index, engine.capacity.details["buckling_resistance"])
+    publisher.output_dict = {}
+    results = _girder_publisher_results(backend, config, record, engine)
+    publisher.store_design_results(results)
+    if str(publisher.input_dict.get(KEY_DESIGN_MODE, "")).strip().lower() in {"custom", "customized"}:
+        for key, field in ((KEY_SD_STIFF_INT_THICK, "is_tq_mm"), (KEY_SD_STIFF_INT_SPACING, "is_c_mm"),
+                           (KEY_SD_STIFF_END_THICK, "bs_tq_mm"), (KEY_SD_STIFF_END_COUNT, "bs_n_plates")):
+            publisher.output_dict[key] = results[field]
+    intermediate = engine.capacity.details.get("intermediate_stiffener") or {}
+    if not intermediate or intermediate.get("skipped") or intermediate.get("design_guidance"):
+        for key in (KEY_SD_IS_IYS_MIN, KEY_SD_IS_IYS_PROV, KEY_SD_IS_FQ, KEY_SD_IS_FQD):
+            publisher.output_dict.pop(key, None)
+    return publisher.output_dict
+
+
+def _report_group_values(published, anchors, exact_keys):
+    """Copy only fields owned by this check, keeping M-V and M-N separate."""
+    prefixes = tuple(key.rsplit(".", 1)[0] + "." for key in anchors)
+    return {key: value for key, value in published.items() if key in exact_keys or key.startswith(prefixes)}
+
+
+def _stored_stiffener_values(record):
+    """Preserve stored stiffener precision and the existing stress-check fallback."""
+    values = {}
+    for check_id, label, demand_key, capacity_key in _STIFFENER_CHECK_FIELDS:
+        _, check = _governing_check(record, check_id, label)
+        if check is not None:
+            values.update(_check_values(check, (demand_key, capacity_key)))
+    _, stress = _governing_check(record, 11)
+    values["design_results"] = dict(zip((KEY_SD_STRESS_STEEL, KEY_SD_STRESS_STEEL_ALLOWABLE),
+                                       ((stress or {}).get("demand"), (stress or {}).get("capacity"))))
+    return values
+
+
+def publish_girder_outputs(backend):
+    """Publish one authoritative report dictionary per girder, using cached selected cases."""
+    outputs = {}
+    for index, (name, record) in enumerate(backend.design_results.get("per_girder", {}).items()):
+        config = BridgeConfig.from_plate_girder_bridge(backend, girder_index=index)
+        values, published_cases = {}, {}
+        for check_id, label, ratio_key, anchors, exact_keys in _GIRDER_REPORT_SECTIONS:
+            case, check = _governing_check(record, check_id, label)
+            if check is None:
+                if check_id == 4 and record.get("per_lc") and all(
+                        data.get("Nu_kN") == 0 for data in record["per_lc"].values()):
+                    values.update(dict.fromkeys(_MN_REPORT_KEYS))
+                continue
+            if case is not None:
+                if case not in published_cases:
+                    engine = backend.get_dcr_engine_for_selection(name, case)
+                    if engine is None or engine.capacity is None:
+                        raise ValueError(f"Cannot publish report details for {name}, {case}.")
+                    published_cases[case] = _publish_girder_case(backend, index, config, record, engine)
+                values.update(_report_group_values(published_cases[case], anchors, exact_keys))
+            else:
+                fields = _CHECK_FALLBACK_FIELDS.get(check_id, (None, None))
+                if check_id == 2 and check.get("name", check.get("label")) != "ULS Shear Buckling":
+                    fields = (fields[0], None)  # Plastic shear resistance is not Vcr.
+                values.update(_check_values(check, fields))
+            ratio = check.get("dcr")
+            values[ratio_key] = ratio * (1 if check_id == 4 else 100) if ratio is not None else None
+            status = check.get("status")
+            if status:
+                values[ratio_key + ".status"] = r"\textcolor{red}{FAIL}" if status == "FAIL" else status
+        values.update(_stored_stiffener_values(record))
+        outputs[name] = values
+    backend.output_dict["girder_outputs"] = outputs
+
+
+def iter_girder_outputs(output_dict, girder_entries):
+    """Read published girder outputs; do not select or recompute report values here."""
+    for index, (label, _) in enumerate(girder_entries, start=1):
+        name, suffix = f"G{index}", f".G{index}.M1"
+        values = {key[:-len(suffix)]: value for key, value in output_dict.items()
+                  if isinstance(key, str) and key.endswith(suffix)}
+        values.update(output_dict.get("girder_outputs", {}).get(name) or {})
+        yield label, dict(values, _report_girder=name)
 
 
 def configure_grouped_table_breaks(probe=False, breaks=None):
@@ -48,7 +264,7 @@ def _tex(value):
 def _render_value(source_dict, key, unit=""):
     val = source_dict.get(key)
     if val in ("", None):
-        return ""
+        return "Not available" if source_dict.get("_report_girder") else ""
     if isinstance(val, float):
         val = f"{val:.2f}".rstrip("0").rstrip(".")
     return _tex(val) + unit
