@@ -88,12 +88,54 @@ def ch4_analysis(asum, fig_paths, bridge: "ReportDataBridge"):
         ["Total Load Deflection Check Status", _total_status],
     ]
 
-    # Table 4.2 rows — reactions per load case, taken straight from rxn_summary.
+    # Table 4.2 rows — individual girder reactions, taken straight from the
+    # per-girder summary.  The summary's aggregate fields remain available for
+    # the existing Table 4.1 and other consumers.
+    girder_labels = []
+    for reaction_data in rxn_summary.values():
+        for label in (reaction_data or {}).get("per_girder", {}):
+            if label not in girder_labels:
+                girder_labels.append(label)
+
+    def _girder_header(label):
+        return (
+            f"Girder {label[1:]}"
+            if isinstance(label, str) and label.startswith("G") and label[1:].isdigit()
+            else label
+        )
+
+    def _reaction_cell(reaction_data, girder_label, side):
+        per_girder = (reaction_data or {}).get("per_girder", {})
+        value = (per_girder.get(girder_label) or {}).get(side)
+        return _fmt(value)
+
     rxn_body = ("\n\\hline\n").join(
         _tex(lc) + r" & "
-        + _tex((rxn_summary.get(lc) or {}).get('left_kN', '')) + r" & "
-        + _tex((rxn_summary.get(lc) or {}).get('right_kN', '')) + r" \\[6pt]"
+        + " & ".join(
+            _reaction_cell(rxn_summary.get(lc), girder_label, side)
+            for girder_label in girder_labels
+            for side in ("left_kN", "right_kN")
+        )
+        + r" \\[6pt]"
         for lc in rxn_summary
+    )
+
+    reaction_column_count = 1 + (2 * len(girder_labels))
+    reaction_header_rows = [
+        [("Load Case", 1)] + [
+            (_girder_header(girder_label), 2) for girder_label in girder_labels
+        ],
+        [""] + [
+            header
+            for _ in girder_labels
+            for header in ("Left Support (kN)", "Right Support (kN)")
+        ],
+    ]
+    reaction_widths = [5.2] + [5.2] * (reaction_column_count - 1)
+    reaction_align = ["C"] * reaction_column_count
+    reaction_clines = (
+        {0: f"2-{reaction_column_count}"}
+        if girder_labels else {}
     )
 
     return r"""
@@ -105,9 +147,10 @@ A grillage model was used for structural analysis. The deck is idealized as a gr
 
 """ + render_report_table(
     "Reactions at Supports", [],
-    headers=["Load Case", "Left Support (kN)", "Right Support (kN)"],
-    widths=[5.2, 5.2, 5.2], align=["C", "C", "C"],
-    longtable=True, escape=False, body_latex=rxn_body + "\n\\hline") + r"""
+    headers=[""] * reaction_column_count,
+    widths=reaction_widths, align=reaction_align,
+    longtable=True, escape=False, body_latex=rxn_body + "\n\\hline",
+    header_rows=reaction_header_rows, header_clines=reaction_clines) + r"""
 
 """ + render_report_table(
     "Deflection Summary (Live Load & Total Load)", defl_rows,
@@ -120,4 +163,3 @@ A grillage model was used for structural analysis. The deck is idealized as a gr
 """ + _fig_embed(fig_paths.get('sf_envelope'), 'Shear Force Envelope (Envelope ULS): Max/min SF along span. X-axis: distance from left support (m). Y-axis: Shear Force (kN).', width=r'0.75\textwidth') + r"""
 """ + _fig_embed(fig_paths.get('defl_ll'), 'Vertical Deflection D$_y$ (1.0 LL): Maximum deflection along span. Load Case: 1.0 LL, Combination: $D_y$. Nodes shown. Isometric view.', width=r'0.75\textwidth') + r"""
 """
-

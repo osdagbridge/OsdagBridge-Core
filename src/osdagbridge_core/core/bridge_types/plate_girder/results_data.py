@@ -1069,7 +1069,12 @@ def build_forces_summary(result_handler, load_effects_cache: dict) -> dict:
     dict with two keys:
         "load_cases" : {lc_name: {max_bm, bm_girder, bm_location,
                                    max_sf, sf_girder, sf_location}}
-        "reactions"  : {lc_name: {left_kN, right_kN}}
+        "reactions"  : {lc_name: {
+            "left_kN": total_left, "right_kN": total_right,
+            "per_girder": {
+                girder_label: {"left_kN": left, "right_kN": right}
+            }
+        }}
     """
     ds = result_handler.ds
     if ds is None or not load_effects_cache:
@@ -1174,31 +1179,79 @@ def build_forces_summary(result_handler, load_effects_cache: dict) -> dict:
             "sf_location": sf_location,
         }
 
-        # ── 3. Reactions — sum Ra and Rb across all interior girders ──
-        left_total  = 0.0
+        # ── 3. Reactions — preserve original totals and retain per-girder values ──
+        left_total = 0.0
         right_total = 0.0
 
+        per_girder = {}
+
+        # Preserve the original bridge-wide total calculation exactly.
         for gmap_key in cache_label_to_gmap_key.values():
             element_map = g_map[gmap_key].get("element_map", [])
             if not element_map:
                 continue
-            eid_start, n1_start, _ = element_map[0]
-            eid_end,   _,  n2_end  = element_map[-1]
+
+            eid_start, _, _ = element_map[0]
+            eid_end, _, _ = element_map[-1]
+
             try:
                 ra = float(ds.sel(
                     Loadcase=lc, Element=eid_start, Component="Vy_i"
                 )["forces"]) / 1000.0
+
                 rb = -float(ds.sel(
                     Loadcase=lc, Element=eid_end, Component="Vy_j"
                 )["forces"]) / 1000.0
-                left_total  += ra
+
+                left_total += ra
                 right_total += rb
             except Exception:
                 pass
 
+        # Retrieve individual reactions using the existing orientation-aware helper.
+        reaction_query = getattr(result_handler, "_get_reactions_df", None)
+
+        if callable(reaction_query):
+            reaction_rows = reaction_query(lc)
+
+            if reaction_rows is not None and not reaction_rows.empty:
+                reaction_by_gmap_key = {
+                    str(row["Girder"]): row
+                    for _, row in reaction_rows.iterrows()
+                }
+
+                for girder_label, gmap_key in cache_label_to_gmap_key.items():
+                    row = reaction_by_gmap_key.get(gmap_key)
+
+                    if row is None:
+                        per_girder[girder_label] = {
+                            "left_kN": None,
+                            "right_kN": None,
+                        }
+                        continue
+
+                    per_girder[girder_label] = {
+                        "left_kN": float(row["Ra (kN)"]),
+                        "right_kN": float(row["Rb (kN)"]),
+                    }
+            else:
+                for girder_label in cache_label_to_gmap_key:
+                    per_girder[girder_label] = {
+                        "left_kN": None,
+                        "right_kN": None,
+                    }
+
+        else:
+            for girder_label in cache_label_to_gmap_key:
+                per_girder[girder_label] = {
+                    "left_kN": None,
+                    "right_kN": None,
+                }
+
         rxn_summary[lc] = {
-            "left_kN":  round(left_total,  3),
+            "left_kN": round(left_total, 3),
             "right_kN": round(right_total, 3),
+            "per_girder": per_girder,
         }
 
     return {"load_cases": lc_summary, "reactions": rxn_summary}
