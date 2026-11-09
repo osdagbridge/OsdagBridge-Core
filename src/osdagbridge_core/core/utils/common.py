@@ -540,6 +540,7 @@ KEY_MP_GIRDER_WARPING_RESTRAINT       = "member_properties.girder_details.sectio
 KEY_MP_GIRDER_WEB_TYPE                = "member_properties.girder_details.section_input.web_type"
 
 KEY_MP_GD_MEMBER_ID                      = "member_properties.girder_details.member_id"
+KEY_MP_GD_APPLY_ALL                      = "member_properties.girder_details.apply_all"
 KEY_MP_GD_APPLY_EXTERIOR                 = "member_properties.girder_details.apply_exterior"
 KEY_MP_GD_APPLY_INTERIOR                 = "member_properties.girder_details.apply_interior"
 KEY_MP_GD_SECTION_PREVIEW                = "member_properties.girder_details.section_preview"
