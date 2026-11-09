@@ -1764,6 +1764,14 @@ GIRDER_DETAILS_SCHEMA = {
                 },
                 {
                     "fields": [{
+                        "id":       KEY_MP_GD_APPLY_ALL,
+                        "type":     TYPE_BUTTON,
+                        "text":     "Apply changes to all girders         ",
+                        "on_click": "_on_apply_all_clicked",
+                    }]
+                },
+                {
+                    "fields": [{
                         "id":       KEY_MP_GD_APPLY_EXTERIOR,
                         "type":     TYPE_BUTTON,
                         "text":     "Apply changes to exterior girders",
