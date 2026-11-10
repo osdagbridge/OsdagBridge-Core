@@ -424,9 +424,11 @@ def _update_cross_bracing_defaults(basic_input_dict: dict) -> None:
     if span_m > 0:
         if last_span != span_m:
             default_cb_count, default_cb_spacing = _calc_crossbracing_spacing_and_no(span_m)
-            if KEY_MP_CB_NO_OF_CROSS_BRACINGS not in basic_input_dict:
+            if last_span is None and KEY_MP_CB_NO_OF_CROSS_BRACINGS in basic_input_dict:
+                if KEY_MP_CB_SPACING not in basic_input_dict:
+                    basic_input_dict[KEY_MP_CB_SPACING] = default_cb_spacing
+            else:
                 basic_input_dict[KEY_MP_CB_NO_OF_CROSS_BRACINGS] = default_cb_count
-            if KEY_MP_CB_SPACING not in basic_input_dict:
                 basic_input_dict[KEY_MP_CB_SPACING] = default_cb_spacing
             basic_input_dict["last_computed_span_for_cb"] = span_m
     else:

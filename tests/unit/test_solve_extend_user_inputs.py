@@ -81,3 +81,17 @@ def test_solve_extend_preserves_user_cross_bracing_and_loading():
     assert d[KEY_MP_CB_SPACING] == 3.75
     assert d[KEY_PL_SELF_WEIGHT_FACTOR] == "1.15"
     assert d[KEY_DO_GAMMA_C_BASIC] == "1.35"
+
+
+def test_solve_extend_recomputes_cb_when_span_changes():
+    d = _base_input_dict()
+    solve_extend_basic_input_dict(d)
+    assert d[KEY_MP_CB_NO_OF_CROSS_BRACINGS] == 9
+    assert d[KEY_MP_CB_SPACING] == 3.0
+
+    # When span changes from 30.0m to 60.0m, CB count and spacing should recompute
+    d[KEY_SPAN] = 60.0
+    solve_extend_basic_input_dict(d)
+    assert d[KEY_MP_CB_NO_OF_CROSS_BRACINGS] == 19
+    assert d[KEY_MP_CB_SPACING] == 3.0
+
