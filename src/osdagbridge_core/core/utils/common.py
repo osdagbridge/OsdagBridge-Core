@@ -14,6 +14,19 @@ GPa = kilo * MPa
 kPa = kilo * Pa
 g = 9.81
 
+KEY_ANALYSIS_ENGINE = "analysis.engine"
+ENGINE_SETU = "setu"
+ENGINE_OSPGRILLAGE = "ospgrillage"
+# setu mesh: (element length along the span, at the bearings, length of the bearing zone, element size across the deck), metres.
+# Numerical choices, not IRC values. Along the span 0.25 / 0.5 / 1.0 m; the bearing and across sizes are setu's measured fine,
+# standard and fast ones (setu docs/accuracy.md), so each level is at least as fine as the setu preset it replaces.
+KEY_ANALYSIS_MESH = "analysis.mesh"
+MESH_PRESETS = {
+    "Fine": (0.25, 0.05, 1.5, 0.10),
+    "Standard": (0.5, 0.1, 1.5, 0.15),
+    "Coarse": (1.0, 0.2, 1.5, 0.25),
+}
+
 # ========== Type of Fields Start ==========================================================
 TYPE_MODULE = "module"
 TYPE_TITLE = "title"
@@ -774,6 +787,8 @@ KEY_LL_IRC_CLASS_FATIGUE        = "loading.live_load.irc.class_fatigue"
 # Live Load Report Values
 KEY_LL_IMPACT_FACTOR_CLASS_A = "loading.live_load.impact_factor.class_a"
 KEY_LL_IMPACT_FACTOR_CLASS_AA_70R = "loading.live_load.impact_factor.class_aa_70r"
+KEY_LL_IMPACT_FACTOR_70R_WHEELED = "loading.live_load.impact_factor.70r_wheeled"
+KEY_LL_IMPACT_FACTOR_70R_TRACKED = "loading.live_load.impact_factor.70r_tracked"
 KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_A = "loading.live_load.vehicle_total_load.class_a"
 KEY_LL_VEHICLE_TOTAL_LOAD_70R_WHEELED = "loading.live_load.vehicle_total_load.70r_wheeled"
 KEY_LL_VEHICLE_TOTAL_LOAD_70R_TRACKED = "loading.live_load.vehicle_total_load.70r_tracked"
@@ -789,6 +804,19 @@ KEY_BL_IRC_70R_TRACKED    = "bl_irc_70r_tracked"
 KEY_BL_IRC_70R_BOGIE      = "bl_irc_70r_bogie"
 KEY_BL_IRC_CLASS_SV       = "bl_irc_class_sv"
 KEY_BL_IRC_CLASS_FATIGUE  = "bl_irc_class_fatigue"
+
+# setu always searches the first family (IRC:6-2017 with Amendment 10: Class A, 70R wheeled and tracked, and Fig. 1 note 3's 70R single
+# axle and bogie) and leaves out the second: Class AA was deleted by Amendment 10 (cl. 201.1, Annex A), and Class SV takes no braking
+# (cl. 204.5.4). Class SV itself is a choice the road category governs (cl. 201.1), checked in unsupported_inputs.
+SETU_REQUIRED_VEHICLES = (KEY_LL_IRC_CLASS_A, KEY_LL_IRC_70R_WHEELED, KEY_LL_IRC_70R_TRACKED, KEY_LL_IRC_70R_BOGIE)
+SETU_UNSUPPORTED_VEHICLES = (KEY_LL_IRC_AA_WHEELED, KEY_LL_IRC_AA_TRACKED, KEY_BL_IRC_CLASS_SV)
+
+# Site conditions for the live load (IRC:6-2017 with Amendment 10)
+KEY_LL_ROAD_CATEGORY = "loading.live_load.road_category"  # cl. 201.1: Class SV for all new bridges except rural, district and village roads
+ROAD_SV_REQUIRED = "Other roads (Class SV required, cl. 201.1)"
+ROAD_SV_OPTIONAL = "Rural, district or village road (Class SV optional, cl. 201.1)"
+KEY_LL_CONGESTION = "loading.live_load.congestion"  # cl. 204.4, Table 7, where the concerned authority decides
+KEY_LL_CROWD_LOAD = "loading.live_load.crowd_load"  # cl. 206.1, where crowd loads are likely
 KEY_BL_ECCENTRICITY       = "bl_eccentricity"
 
 # Custom Vehicle
@@ -870,6 +898,22 @@ KEY_WL_WIND_LL_ECC              = "loading.wind_load.wind_ll_ecc"
 KEY_WL_WIND_LL_ECC_MODE         = "loading.wind_load.wind_ll_ecc.mode"
 KEY_WL_WIND_LL_ECC_VALUE        = "loading.wind_load.wind_ll_ecc.value"
 
+# IRC:6 cl. 209 as replaced by Amendment 10, read by the setu engine
+KEY_WL_TERRAIN_CATEGORY = "loading.wind_load.amendment_10.terrain_category"  # Table 2
+TERRAIN_CATEGORIES = ("TC 1", "TC 2", "TC 3", "TC 4")
+KEY_WL_RETURN_PERIOD = "loading.wind_load.amendment_10.return_period"  # Table 1, years
+RETURN_PERIODS = ("5", "10", "25", "50", "100")
+KEY_WL_ROAD_LEVEL = "loading.wind_load.amendment_10.road_level"  # m above the mean retarding surface (209.3 (v))
+KEY_WL_PIER_HEIGHT = "loading.wind_load.amendment_10.pier_height"  # m, pier cap top to foundation top (Table 5, 209.1)
+KEY_WL_K3_LOCATION = "loading.wind_load.amendment_10.k3_location"  # 209.3.3
+K3_OTHER = "Other locations (k3 = 1.0)"
+K3_VALLEY_OR_LEEWARD = "Valley with local funnelling, or leeward side of a hill (k3 = 1.2)"
+KEY_WL_CYCLONIC_REGION = "loading.wind_load.amendment_10.cyclonic_region"  # 209.3.4
+K4_OTHER = "Other (k4 = 1.0)"
+K4_CYCLONE_COAST = "Within about 60 km of a cyclone-affected coast (k4 = 1.30 where Vb >= 50 m/s)"
+K4_OFFSHORE = "Offshore, up to about 200 km off the coast (k4 = 1.5)"
+KEY_WL_CROSS_SLOPE = "loading.wind_load.amendment_10.cross_slope"  # degrees, Table 8 note 7
+
 KEY_WL_HOURLY_MEAN_WIND         = "loading.wind_load.computed.hourly_mean_wind"
 KEY_WL_HOURLY_WIND_PRESSURE     = "loading.wind_load.computed.hourly_wind_pressure"
 KEY_WL_TRANSVERSE_WIND_FORCE    = "loading.wind_load.computed.transverse_wind_force"
@@ -888,6 +932,7 @@ KEY_TL_BRIDGE_TEMP_MIN          = "loading.temperature_load.computed.bridge_temp
 KEY_TL_BRIDGE_TEMP_MAX          = "loading.temperature_load.computed.bridge_temp_max"
 KEY_TL_TEMP_RISE                = "loading.temperature_load.computed.temp_rise"
 KEY_TL_TEMP_FALL                = "loading.temperature_load.computed.temp_fall"
+KEY_TL_SNOWBOUND                = "loading.temperature_load.snowbound"  # cl. 215.2
 
 #--------------- Load Combination Sub-Tab -------------------------------------------------
 
@@ -973,6 +1018,9 @@ KEY_DS_TAB                        = "design_options.tab"
 
 # Construction
 KEY_DS_CONSTRUCTION_STAGE         = "design_options.construction.stage"
+# IRC:6 cl. 218 and IRC:22 cl. 604.1.1: the project's construction loads on the bare steel; IRC gives no values (kN/m2, 0 if none)
+KEY_DS_SHUTTERING_LOAD            = "design_options.construction.shuttering_kpa"
+KEY_DS_CONSTRUCTION_LIVE_LOAD     = "design_options.construction.live_load_kpa"
 
 # Deck Design
 KEY_DS_REINF_BOUNDS               = "design_options.deck.reinforcement_bounds"
@@ -1925,6 +1973,17 @@ def get_angle_designation_list() -> list[str]:
         return []
 
 
+def get_channel_section_properties(designation: str) -> dict:
+    """Fetch section properties for a channel from the Channels table, e.g. "MC 100"."""
+    con = sqlite3.connect(_DB_PATH)
+    con.row_factory = sqlite3.Row
+    row = con.execute("SELECT * FROM Channels WHERE Designation = ?", (designation.strip(),)).fetchone()
+    con.close()
+    if row is None:
+        raise LookupError(f"Channel designation '{designation}' not found in Channels table")
+    return dict(row)
+
+
 def get_channel_section_list() -> list[str]:
     """Return sorted list of all channel designations from the database."""
     if not _DB_PATH.exists():
@@ -1938,3 +1997,9 @@ def get_channel_section_list() -> list[str]:
         return designations
     except sqlite3.Error:
         return []
+
+# Design options the girder design does not read: it runs every limit-state check and uses these partial factors built into its
+# IRC:22 clause methods. With setu they are set to these values and locked, and an .osi holding others is stated, not ignored.
+SETU_FIXED_DESIGN_FACTORS = {KEY_DO_GAMMA_C_BASIC: "1.50", KEY_DO_GAMMA_C_ACCIDENTAL: "1.20", KEY_DO_GAMMA_S: "1.15", KEY_DO_GAMMA_FLT: "1.00"}
+SETU_ALWAYS_CHECKED = (KEY_DO_ULS_BENDING, KEY_DO_ULS_SHEAR, KEY_DO_ULS_LTB, KEY_DO_ULS_TRANSVERSE, KEY_DO_ULS_LONG_SHEAR,
+                       KEY_DO_ULS_FATIGUE, KEY_DO_SLS_STRESS, KEY_DO_SLS_LONG_SHEAR, KEY_DO_SLS_DEFLECTION, KEY_DO_SLS_CRACK_WIDTH)

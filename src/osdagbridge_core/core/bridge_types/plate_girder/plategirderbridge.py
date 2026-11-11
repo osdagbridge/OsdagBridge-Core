@@ -37,7 +37,7 @@ from .plot_generator import (
 )
 from osdagbridge_core.core.utils.codes.irc6_2017 import IRC6_2017
 from osdagbridge_core.core.utils.common import (
-    KEY_STRUCTURE_TYPE,
+    KEY_STRUCTURE_TYPE, KEY_ANALYSIS_ENGINE, ENGINE_SETU,
     KEY_PROJECT_LOCATION,
     KEY_WL_BASIC_WIND_SPEED,
     KEY_WL_AVG_EXPOSED_HEIGHT,
@@ -423,6 +423,7 @@ class PlateGirderBridge:
             The flat dictionary built and maintained by ``CustomWindow``.
         """
         self.input_dict = self._normalize_input_dict(input_dict)
+        self.input_dict.setdefault(KEY_ANALYSIS_ENGINE, ENGINE_SETU)  # .osi files saved before the engine choice
         self.basic_inputs = {
             k: v for k, v in self.input_dict.items()
             if k in self._BASIC_INPUT_KEYS
@@ -735,31 +736,36 @@ class PlateGirderBridge:
             # Stage 2: Bridge Layout Solving
             self._run_stage("2", self._solve_bridge_layout)
             
-            # Stage 3: Grillage Setup
-            self._run_stage("3", self._stage_grillage_setup)
+            from osdagbridge_core.core.utils.common import KEY_ANALYSIS_ENGINE, ENGINE_SETU
+            if self.input_dict[KEY_ANALYSIS_ENGINE] == ENGINE_SETU:
+                from osdagbridge_core.core.solvers.setu.analysis_engine import run_analysis
+                self._run_stage("4G", run_analysis, self)
+            else:
+                # Stage 3: Grillage Setup
+                self._run_stage("3", self._stage_grillage_setup)
             
-            # Stage 4A: Dead Load Application
-            self._run_stage("4A", self.add_dead_loads)
+                # Stage 4A: Dead Load Application
+                self._run_stage("4A", self.add_dead_loads)
             
-            # Stage 4B: Live Load Application
-            self._run_stage("4B", self.add_live_loads)
+                # Stage 4B: Live Load Application
+                self._run_stage("4B", self.add_live_loads)
             
-            # Stage 4C: Wind Load Application
-            self._run_stage("4C", self.add_wind_loads)
+                # Stage 4C: Wind Load Application
+                self._run_stage("4C", self.add_wind_loads)
             
-            # Stage 4D: Temperature Load Application
-            self._run_stage("4D", self.add_temperature_load)
+                # Stage 4D: Temperature Load Application
+                self._run_stage("4D", self.add_temperature_load)
             
-            # Stage 4E: Seismic Load Application
-            self._run_stage("4E", self.add_seismic_loads)
+                # Stage 4E: Seismic Load Application
+                self._run_stage("4E", self.add_seismic_loads)
             
-            # Stage 4F: Load Combination Envelope
-            self._run_stage("4F", self._stage_load_combinations)
+                # Stage 4F: Load Combination Envelope
+                self._run_stage("4F", self._stage_load_combinations)
             
-            # Stage 4G: Structural Analysis
-            dataset = self._run_stage("4G", self._reanalyze_with_dedup)
-            dataset = self.create_envelope_load_case(dataset)
-            dataset = self._drop_moving_increment_cases(dataset)
+                # Stage 4G: Structural Analysis
+                dataset = self._run_stage("4G", self._reanalyze_with_dedup)
+                dataset = self.create_envelope_load_case(dataset)
+                dataset = self._drop_moving_increment_cases(dataset)
 
             # Drop the raw ospgrillage per-load-case records as soon as the
             # deduplicated dataset is cached: everything downstream (design checks,
@@ -2489,10 +2495,14 @@ class PlateGirderBridge:
         # Forces, displacements, load-case names and girders all come from
         # self.result_data (built just before stage 5), so no result handler is
         # needed here — run_design_check reads that dict directly.
-        _, engine, design_results = run_design_check(
-            plate_girder_bridge=self,
-            print_report=True,
-        )
+        if self.input_dict[KEY_ANALYSIS_ENGINE] == ENGINE_SETU:
+            model = self.grillage_model
+            _, engine, design_results = run_design_check(self, model.per_girder_demands, model.per_girder_per_lc, model.deflections_cache)
+        else:
+            _, engine, design_results = run_design_check(
+                plate_girder_bridge=self,
+                print_report=True,
+            )
         self._dcr_engine = engine
         bridge_logger.check_cancel()
         self.design_results = design_results
@@ -2505,6 +2515,14 @@ class PlateGirderBridge:
         # Log the girder verdict (reads it from output_dict)
         bridge_logger.girder_verdict(self.output_dict)
 
+    def cross_bracing_forces(self):
+        """The cross-bracing force reader for this bridge's analysis engine: setu's member forces or the grillage's panel shears."""
+        from osdagbridge_core.core.bridge_types.plate_girder.crossbracingforces import CrossBracingForces
+
+        if self.input_dict[KEY_ANALYSIS_ENGINE] == ENGINE_SETU:
+            from osdagbridge_core.core.solvers.setu.bracing_forces import SetuCrossBracingForces as CrossBracingForces
+        return CrossBracingForces(bridge=self)
+
     def _design_cross_bracing_members(self) -> dict:
         """
         Run Osdag member designs for cross-bracing diagonals and chords.
@@ -2513,10 +2531,7 @@ class PlateGirderBridge:
         -------
         dict — nested by pair → member → force_type → Osdag result.
         """
-        from osdagbridge_core.core.bridge_types.plate_girder.crossbracingforces import CrossBracingForces
-
-        cb = CrossBracingForces(bridge=self)
-        return cb.design()
+        return self.cross_bracing_forces().design()
 
     def _design_end_diaphragm_members(self) -> dict:
         """
@@ -2530,6 +2545,8 @@ class PlateGirderBridge:
         """
         from osdagbridge_core.core.bridge_types.plate_girder.crossbracingforces import EndDiaphragmForces
 
+        if self.input_dict[KEY_ANALYSIS_ENGINE] == ENGINE_SETU:
+            from osdagbridge_core.core.solvers.setu.bracing_forces import SetuEndDiaphragmForces as EndDiaphragmForces
         ed_forces = EndDiaphragmForces(bridge=self, pair_to_elements={})
         return ed_forces.design()
 
@@ -3248,6 +3265,9 @@ class PlateGirderBridge:
             g_data = per_girder.get(g_name, {})
             per_lc = g_data.get("per_lc", {})
             lc_demand = per_lc.get(load_case)
+            # setu's plots name their load states differently from its combinations.
+            if not lc_demand and hasattr(self.grillage_model, "case_demand"):
+                lc_demand = self.grillage_model.case_demand(g_name, load_case)
             if not lc_demand:
                 continue
 
@@ -3260,6 +3280,7 @@ class PlateGirderBridge:
                 M_construction_kNm   = lc_demand.get("M_construction_kNm",  0.0),
                 M_girder_sw_kNm      = lc_demand.get("M_girder_sw_kNm",     0.0),
                 M_sls_kNm            = lc_demand.get("M_sls_kNm",           0.0),
+                M_sls_stages_kNm     = lc_demand.get("M_sls_stages_kNm"),   # setu only
                 V_sls_kN             = lc_demand.get("V_sls_kN",            0.0),
                 delta_live_mm        = lc_demand.get("delta_live_mm",       0.0),
                 delta_total_mm       = lc_demand.get("delta_total_mm",      0.0),
@@ -3287,6 +3308,7 @@ class PlateGirderBridge:
                     M_sls_kNm=demand.M_sls_kNm,
                     V_sls_kN=demand.V_sls_kN,
                     Vr_kN=demand.Vr_kN,
+                    M_sls_stages_kNm=demand.M_sls_stages_kNm,
                 )
                 engine = DCREngine(demand, capacity)
                 engine.run_all_checks()

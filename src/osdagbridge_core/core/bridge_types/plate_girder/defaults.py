@@ -15,7 +15,7 @@ from osdagbridge_core.core.utils.codes.keyfile import (
     KEY_RIGID_CRASH_BARRIER_TYPE,
 )
 from osdagbridge_core.core.utils.common import (
-    KEY_MODULE_PLATE_GIRDER, KEY_MODULE,
+    KEY_MODULE_PLATE_GIRDER, KEY_MODULE, KEY_ANALYSIS_ENGINE, ENGINE_SETU,
     DEFAULT_GIRDER_SPACING,
     DEFAULT_RAILING_WIDTH,
     KEY_TS_GIRDER_SPACING, KEY_TS_NO_OF_GIRDERS, KEY_TS_DECK_OVERHANG, KEY_TS_OVERALL_WIDTH,
@@ -127,6 +127,9 @@ from osdagbridge_core.core.utils.common import (
     KEY_WL_SUPER_AREA_ELEV_VALUE, KEY_WL_SUPER_AREA_PLAIN_MODE, KEY_WL_SUPER_AREA_PLAIN_VALUE, KEY_WL_EXPOSED_FRONTAL_MODE, 
     KEY_WL_EXPOSED_FRONTAL_VALUE, KEY_WL_WIND_ECC_DECK_MODE, KEY_WL_WIND_ECC_DECK_VALUE, KEY_WL_WIND_LL_ECC_MODE, KEY_WL_WIND_LL_ECC_VALUE,
     KEY_TL_THERMAL_COEFF_STEEL, KEY_TL_THERMAL_COEFF_RCC, KEY_LC_COMBINATIONS,
+    KEY_ANALYSIS_MESH, KEY_LL_ROAD_CATEGORY, ROAD_SV_REQUIRED, KEY_LL_CONGESTION, KEY_LL_CROWD_LOAD, KEY_TL_SNOWBOUND,
+    KEY_WL_TERRAIN_CATEGORY, KEY_WL_RETURN_PERIOD, KEY_WL_ROAD_LEVEL, KEY_WL_PIER_HEIGHT, KEY_WL_K3_LOCATION, K3_OTHER,
+    KEY_WL_CYCLONIC_REGION, K4_OTHER, KEY_WL_CROSS_SLOPE, KEY_DS_SHUTTERING_LOAD, KEY_DS_CONSTRUCTION_LIVE_LOAD,
 
 )
 from .initial_sizing import (
@@ -147,6 +150,7 @@ concrete_properties = connectdb("Concrete_Grade_Properties")
 
 # This is default initial dictionary
 BASIC_INPUT_DICT = {
+    KEY_ANALYSIS_ENGINE: ENGINE_SETU,
 
     # Input Dock Defaults
     KEY_MODULE: KEY_MODULE_PLATE_GIRDER,
@@ -294,17 +298,21 @@ def _update_loading_tab_defaults(input_dict: dict) -> None:
     _update(KEY_PL_SELF_WEIGHT_FACTOR,      "1.00")
 
     # ── Live Load ──────────────────────────────────────────────────────────
+    not_setu = input_dict.get(KEY_ANALYSIS_ENGINE, ENGINE_SETU) != ENGINE_SETU
     _update(KEY_LL_IRC_CLASS_A,             True)
-    _update(KEY_LL_IRC_AA_WHEELED,          True)
-    _update(KEY_LL_IRC_AA_TRACKED,          True)
+    _update(KEY_LL_IRC_AA_WHEELED,          not_setu)
+    _update(KEY_LL_IRC_AA_TRACKED,          not_setu)
     _update(KEY_LL_IRC_70R_WHEELED,         True)
     _update(KEY_LL_IRC_70R_TRACKED,         True)
     _update(KEY_LL_IRC_70R_BOGIE,           True)
-    _update(KEY_LL_IRC_CLASS_SV,            True)
+    _update(KEY_LL_IRC_CLASS_SV,            True)  # cl. 201.1 as amended: required for all new bridges except rural, district, village roads
+    _update(KEY_LL_ROAD_CATEGORY,           ROAD_SV_REQUIRED)
+    _update(KEY_LL_CONGESTION,              False)
+    _update(KEY_LL_CROWD_LOAD,              False)
     _update(KEY_LL_IRC_CLASS_FATIGUE,       True)
     # Braking load for Class SV is opt-in (own checkbox); seed to match its
     # schema default_checked so the table matches the displayed checkbox.
-    _update(KEY_BL_IRC_CLASS_SV,            True)
+    _update(KEY_BL_IRC_CLASS_SV,            not_setu)
     _update(KEY_LL_CUSTOM_VEHICLES,         [])
     _update(KEY_LL_ECCENTRICITY,            "1.2")
     _update(KEY_LL_FOOTPATH_PRESSURE_MODE,  "As per IRC 6")
@@ -324,6 +332,15 @@ def _update_loading_tab_defaults(input_dict: dict) -> None:
     # ── Wind Load ──────────────────────────────────────────────────────────
     _update(KEY_WL_AVG_EXPOSED_HEIGHT,      "10")
     _update(KEY_WL_TERRAIN_TYPE,            "Plain Terrain")
+    # Amendment 10 wind (setu): site inputs the engineer must set; these placeholders are stated in the report
+    _update(KEY_WL_TERRAIN_CATEGORY,        "TC 2")
+    _update(KEY_WL_RETURN_PERIOD,           "100")
+    _update(KEY_WL_ROAD_LEVEL,              "10")
+    _update(KEY_WL_PIER_HEIGHT,             "10")
+    _update(KEY_WL_K3_LOCATION,             K3_OTHER)
+    _update(KEY_WL_CYCLONIC_REGION,         K4_OTHER)
+    _update(KEY_WL_CROSS_SLOPE,             "0")
+    _update(KEY_TL_SNOWBOUND,               False)
     _update(KEY_WL_SITE_TOPOGRAPHY,         "Flat")
     _update(KEY_WL_GUST_FACTOR_MODE,        "As per IRC 6")
     _update(KEY_WL_GUST_FACTOR_VALUE,       "")
@@ -365,6 +382,9 @@ def _update_design_options_defaults(input_dict: dict) -> None:
         input_dict.update({key: value})
 
     _update(KEY_DS_CONSTRUCTION_STAGE,      "Yes")
+    _update(KEY_DS_SHUTTERING_LOAD,         "0")  # IRC gives no value: default 0 so the UI runs out of the box; the engineer sets it for the site
+    _update(KEY_DS_CONSTRUCTION_LIVE_LOAD,  "0")
+    _update(KEY_ANALYSIS_MESH,              "Standard")
     _update(KEY_DS_REINF_BOUNDS,            {
                                                 "lower":     None,
                                                 "upper":     None,
