@@ -385,6 +385,9 @@ def _update_design_options_cont_defaults(input_dict: dict) -> None:
 
     def _update(key, value):
         # Update dict (solves some osi values not being loaded)
+        # Booleans are the Limit States ticks; keep a saved False across re-solves.
+        if isinstance(value, bool) and input_dict.get(key) is not None:
+            return
         input_dict[key] = value
 
     _update(KEY_DO_GAMMA_C_BASIC,      "1.50")
