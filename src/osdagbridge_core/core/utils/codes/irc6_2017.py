@@ -104,10 +104,16 @@ class IRC6_2017:
     def cl_204_1_Class70R_vehicle_track():
         """
         Makes an Class70R vehicle(Track) in local coordinates
+        (IRC:6-2017 Cl.204.1, Fig. 1 — 70 t on two tracks of 35 t each).
         Returns a dictionary with keys:
             'x' - list of longitudinal load positions vertex(m)
-            'z' - list of transverse load positions vertex(m)
-            'wheel_loads' - list of wheel loads (t)
+            'z' - list of transverse positions of the track centrelines (m)
+            'wheel_loads_udl' - load per metre of each track (N/m)
+            'spacing_Class70R(T)' - min. nose to tail spacing of successive vehicles (m)
+            'track_width' - width of each track (m)
+            'min_clearance' - min. clearance from road face of kerb to outer edge of track (m)
+            'min_passing_clearance' - min. clearance between outer edges of passing
+                                      or crossing vehicles on a multi-lane bridge (m)
         """
         # Define units
         start_vertex_x = 0.0 * m
@@ -128,12 +134,24 @@ class IRC6_2017:
         # Spacing between two sucessive class 70R track vehicles
         spacing_Class70R_T = 90.0 * m
 
+        # Width of each track (Fig. 1 — 0.84 m; 2.90 m over the tracks)
+        track_width = 0.84 * m
+
+        # Minimum clearance 'C' between the road face of the kerb and the outer edge of the track (Fig. 1, Note 4)
+        min_clearance = 1.2 * m
+
+        # Minimum clearance between the outer edges of passing or crossing vehicles on a multi-lane bridge (Fig. 1, Note 5)
+        min_passing_clearance = 1.2 * m
+
         # make a dictonary to return vehicle data
         return {
             'x': load_positions_x,
             'z': load_positions_z,
             'wheel_loads_udl': track_loads_udl,
-            'spacing_Class70R(T)': spacing_Class70R_T
+            'spacing_Class70R(T)': spacing_Class70R_T,
+            'track_width': track_width,
+            'min_clearance': min_clearance,
+            'min_passing_clearance': min_passing_clearance,
         }
     
     @staticmethod
