@@ -618,37 +618,43 @@ class IRC6_2017:
         return round(IM, 3)
     
     @staticmethod
-    def cl_208_3_impact_factor(span):
+    def cl_208_3_impact_factor(span, vehicle=KEY_VEHICLE[0]):
         """
-        Returns the impact factor (IM) for Class AA and Class 70R loading 
-        according to IRC:6-2017 Clause 208.3.
+        Returns the impact factor (IM) for Class AA and Class 70R loading
+        on steel bridges according to IRC:6-2017 Clause 208.3.
 
         Parameters:
-            span (float): span in metres
+            span (float): span in metres (Cl. 208.5)
+            vehicle (str): KEY_VEHICLE[0] 'Class70R(W)' (wheeled, default)
+                           or KEY_VEHICLE[1] 'Class70R(T)' (tracked)
         Returns:
             float: impact factor (IM)
         """
-        if span < 9.0: #span less than 9 m
-            if KEY_VEHICLE[1]: # Class70R(T)
-                if span < 5.0:
-                    IM = 0.25
-                if span >= 5.0:
-                    IM = 0.10
-            elif KEY_VEHICLE[0]: # Class70R(W)
+        if vehicle == KEY_VEHICLE[1]: # Class70R(T)
+            if span <= 5.0:
+                # Cl. 208.3(a): 25 percent for spans upto 5 m
                 IM = 0.25
-        
-        elif 9.0 <= span <= 45.0: #span between 9 m and 45 m
-            if KEY_VEHICLE[1]: # Class70R(T)
+            elif span < 9.0:
+                # Cl. 208.3(a): linearly reducing to 10 percent for spans upto 9 m
+                IM = 0.25 - 0.15 * (span - 5.0) / 4.0
+            else:
+                # Cl. 208.3(b)(ii)(3): steel bridges, 10 percent for all spans
                 IM = 0.10
-            elif KEY_VEHICLE[0]: # Class70R(W)
-                if span < 23.0:
-                    IM = 0.25
-                if span >= 23.0:
-                    IM = 9.0/(13.5 + span)
-        else: #span greater than 45 m
-            span = 45.0
-            IM = 9.0/(13.5 + span)
-        
+
+        elif vehicle == KEY_VEHICLE[0]: # Class70R(W)
+            if span <= 23.0:
+                # Cl. 208.3(a) and (b)(ii)(4): 25 percent for spans upto 23 m
+                IM = 0.25
+            else:
+                # Cl. 208.3(b)(ii)(4): Fig. 9 steel curve for spans in excess of 23 m
+                IM = IRC6_2017.cl_208_2_impact_factor(span)
+
+        else:
+            raise ValueError(
+                f"cl_208_3_impact_factor: vehicle must be {KEY_VEHICLE[0]!r} "
+                f"or {KEY_VEHICLE[1]!r}, got {vehicle!r}"
+            )
+
         return round(IM, 3)
             
     
