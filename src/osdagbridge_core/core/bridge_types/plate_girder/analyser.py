@@ -1891,6 +1891,17 @@ class BridgeGrillageModel:
 
         return all_vehicle_load_cases
 
+    def _vehicle_impact_factor(self, vehicle_type):
+        """
+        IRC 6:2017 impact factor (IM) for one vehicle on this steel span:
+        Class A from Cl.208.2, Class 70R wheeled from Cl.208.3.
+        """
+        if vehicle_type == "ClassA":
+            return IRC6_2017.cl_208_2_impact_factor(self.L)
+        if vehicle_type == "Class70R":
+            return IRC6_2017.cl_208_3_impact_factor(self.L, KEY_VEHICLE[0])
+        raise ValueError(f"No impact factor defined for vehicle type {vehicle_type!r}")
+
     def add_vehicle_load_cases_from_combinations(self, model=None):
         """
         Create vehicle load cases using coordinates from vehicle_lane_coordinates().
@@ -1898,7 +1909,8 @@ class BridgeGrillageModel:
         - Creates empty moving load list
         - Uses global coordinates from vehicle combinations
         - Applies lane factors (alf)
-        - Applies dynamic load allowance (dla)
+        - Applies dynamic load allowance (dla) per vehicle, stored in the load
+          case's load_groups so the governing LL case and combinations keep it
         """
 
         model = model or self.model
@@ -1909,8 +1921,6 @@ class BridgeGrillageModel:
 
         # IRC 6:2017 Cl.204.4 Table 6A — multi-lane live-load reduction factors (keyfile.LANE_REDUCTION_FACTORS).
         alf = list(LANE_REDUCTION_FACTORS)
-        # IRC 6:2017 Cl.208.3 — dynamic load allowance computed from actual span.
-        dla = 1.0 + IRC6_2017.cl_208_3_impact_factor(self.L)
         # -------------------------------------------------
         # Reset stores
         # -------------------------------------------------
@@ -1932,6 +1942,8 @@ class BridgeGrillageModel:
             self.vehicle_moving_loads_by_case[case_num] = []
 
             for vehicle_type, coord_list in combinations.items():
+                # IRC 6:2017 Cl.208.2 / 208.3 — impact factor for this vehicle type.
+                dla = 1.0 + self._vehicle_impact_factor(vehicle_type)
                 for i, (x_coord, z_coord) in enumerate(coord_list):
 
                     # Lane factor resets per vehicle type (alf indexed within coord_list)
@@ -1943,12 +1955,12 @@ class BridgeGrillageModel:
                     vehicle = vehicle_generator.create()
                     vehicle.set_global_coord(og.Point(x_coord, 0.0, z_coord))
 
-                    lc.add_load(load=vehicle, load_factor=lane_factor)
+                    lc.add_load(load=vehicle, load_factor=lane_factor * dla)
 
                     self.vehicle_moving_loads_by_case[case_num].append(vehicle)
                     self.vehicle_type_map[id(vehicle)] = vehicle_type
 
-            model.add_load_case(lc, load_factor=dla)
+            model.add_load_case(lc, load_factor=1.0)
             self.vehicle_load_cases_list.append(lc)
 
         # Flat list kept for backward-compat guard checks
@@ -2307,10 +2319,9 @@ class BridgeGrillageModel:
             return self.sv_load_cases_list
 
         eccentricity_m = abs(placement["eccentricity_mm"]) / 1000.0
-        # IRC 6:2017 Table 6A lane reduction and Cl.208.3 impact, for the
+        # IRC 6:2017 Table 6A lane reduction and Cl.208.2 / 208.3 impact, for the
         # non-SV carriageway only — same factors as the Table 6A vehicle cases.
         alf = list(LANE_REDUCTION_FACTORS)
-        dla = 1.0 + IRC6_2017.cl_208_3_impact_factor(self.L)
 
         for sv_side, other_side in (("left", "right"), ("right", "left")):
             sv_cw, other_cw = cws[sv_side], cws[other_side]
@@ -2345,6 +2356,7 @@ class BridgeGrillageModel:
                         i = count.get(vehicle_type, 0)
                         count[vehicle_type] = i + 1
                         lane_factor = alf[i] if i < len(alf) else 1.0
+                        dla = 1.0 + self._vehicle_impact_factor(vehicle_type)
                         v = og.create_load_model(model_type=vehicle_type.upper()).create()
                         v.set_global_coord(og.Point(0.0, 0.0, z))
                         lc.add_load(load=v, load_factor=lane_factor * dla)
