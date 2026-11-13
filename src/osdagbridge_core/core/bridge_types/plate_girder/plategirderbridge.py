@@ -2654,7 +2654,7 @@ class PlateGirderBridge:
 
         # Use already-resolved concrete props (handles custom grades).
         fck  = self.material_props.concrete_prop.fck
-        Ecm  = self.material_props.concrete_prop.Ecm
+        Ecm  = self.material_props.concrete_prop.Ecm * 1000.0   # GPa → MPa
         fctm = self.material_props.concrete_prop.fctm
         fy = self._lookup_material(rebar_grade, "fy")
         Es = self._lookup_material(rebar_grade, "Es")

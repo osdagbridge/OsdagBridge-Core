@@ -59,11 +59,15 @@ from osdagbridge_core.core.utils.common import (
     # Composite interface check output keys — mutated into design_results.
     KEY_SD_TS_VL, KEY_SD_TS_VCAP_CONC, KEY_SD_TS_VCAP_REINF, KEY_SD_TS_VRD,
     KEY_SD_CRACK_AS_MIN, KEY_SD_CRACK_AS_PROV,
+    # Deflection check output keys — IRC 112:2020 Cl.12.4.1
+    KEY_DD_DEFL_INTERIOR, KEY_DD_DEFL_INTERIOR_LIMIT, KEY_DD_DEFL_INTERIOR_OK,
+    KEY_DD_DEFL_OH, KEY_DD_DEFL_OH_LIMIT, KEY_DD_DEFL_OH_OK,
     # Deck verdict keys
     STATUS_PASS, STATUS_FAIL, KEY_DD_VERDICT,
     KEY_DD_CHECK_FLEXURE, KEY_DD_CHECK_SHEAR, KEY_DD_CHECK_PUNCHING,
     KEY_DD_CHECK_STRESS_CONC, KEY_DD_CHECK_STRESS_REINF, KEY_DD_CHECK_CRACK,
     KEY_DD_CHECK_COMP_TRANS_SHEAR, KEY_DD_CHECK_COMP_CRACK,
+    KEY_DD_CHECK_DEFLECTION,
 )
 
 # ── constants ─────────────────────────────────────────────────────────────────
@@ -261,6 +265,8 @@ def _cracked_section(As_mm2: float, d_mm: float, Es_MPa: float, Ecm_MPa: float,
     return x, I_cr, alpha_e
 
 
+
+
 def _sls_stress(M_SLS_kNm: float, As_mm2: float, d_mm: float,
                 fck_MPa: float, fy_MPa: float, Es_MPa: float, Ecm_MPa: float, b_mm: float = 1000.0) -> dict:
     """
@@ -343,6 +349,28 @@ def _sls_crack_width(M_SLS_kNm: float, As_mm2: float, dia_mm: float,
         "Sr_max": Sr_max, "eps_diff": eps_diff, "wk": wk, "wk_lim": wk_lim,
         "ok": wk <= wk_lim,
     }
+
+
+def _tighten_for_crack_width(M_SLS_freq_kNm: float, dia: float, spc: float,
+                              As: float, deck_t_mm: float, cover_mm: float,
+                              fctm: float, Es: float, Ecm: float,
+                              allowed_dias: list) -> tuple:
+    """
+    Increase reinforcement until wk ≤ 0.3 mm (IRC 112:2020 Cl.12.3.4, frequent combo).
+    Returns (dia, spc, As, d). Only adds steel; stops when bars are maxed out.
+    """
+    d_mm = deck_t_mm - cover_mm - dia / 2.0
+    for _ in range(60):
+        cw = _sls_crack_width(M_SLS_freq_kNm, As, dia, d_mm, deck_t_mm,
+                               cover_mm, fctm, Es, Ecm)
+        if cw["ok"]:
+            break
+        dia_new, spc_new, As_new = _pick_rebar(As * 1.03, allowed_dias)
+        if As_new <= As:
+            break
+        dia, spc, As = dia_new, spc_new, As_new
+        d_mm = deck_t_mm - cover_mm - dia / 2.0
+    return dia, spc, As, d_mm
 
 
 # ── governing vehicle ─────────────────────────────────────────────────────────
@@ -464,6 +492,7 @@ _DECK_VERDICT_UR_FIELDS = {
     KEY_DD_CHECK_CRACK:            ("ur_bot_crack", "ur_top_crack", "ur_oh_crack"),
     KEY_DD_CHECK_COMP_TRANS_SHEAR: ("ur_composite_trans_shear",),
     KEY_DD_CHECK_COMP_CRACK:       ("ur_composite_crack",),
+    KEY_DD_CHECK_DEFLECTION:       ("ur_bot_defl", "ur_oh_defl"),
 }
 
 
@@ -652,6 +681,10 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     dia_bot, spc_bot, As_bot, d_bot_mm = _tighten_for_oneway_shear(
         V_ULS_bot_demand, dia_bot, spc_bot, As_bot,
         deck_t_mm, cover_bot_mm, fck, allowed_dias)
+    # …and the crack width limit (Cl.12.3.4) under the frequent combination.
+    dia_bot, spc_bot, As_bot, d_bot_mm = _tighten_for_crack_width(
+        M_DL_kNm + 0.75 * impact_factor * M_LL_kNm,
+        dia_bot, spc_bot, As_bot, deck_t_mm, cover_bot_mm, fctm, Es, Ecm, allowed_dias)
 
     # ── 8. design top (hogging) reinforcement ────────────────────────────────
     d_top_mm = deck_t_mm - cover_top_mm - 6.0
@@ -672,6 +705,10 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     dia_top, spc_top, As_top, d_top_mm = _tighten_for_sls_stress(
         0.75 * (M_DL_kNm + impact_factor * M_LL_kNm), dia_top, spc_top, As_top,
         deck_t_mm, cover_top_mm, fck, fy, Es, Ecm, allowed_dias)
+    # …and the crack width limit (Cl.12.3.4) under the frequent combination.
+    dia_top, spc_top, As_top, d_top_mm = _tighten_for_crack_width(
+        0.75 * (M_DL_kNm + impact_factor * M_LL_kNm),
+        dia_top, spc_top, As_top, deck_t_mm, cover_top_mm, fctm, Es, Ecm, allowed_dias)
 
     # ── 9. moment capacity check ─────────────────────────────────────────────
     Mu_bot = _moment_capacity_kNm(fy, As_bot, d_bot_mm, fck)
@@ -749,6 +786,10 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         dia_oh, spc_oh, As_oh, d_oh_mm = _tighten_for_oneway_shear(
             V_ULS_oh_demand, dia_oh, spc_oh, As_oh,
             deck_t_mm, cover_top_mm, fck, allowed_dias)
+        # …and the crack width limit (Cl.12.3.4) under the frequent combination.
+        dia_oh, spc_oh, As_oh, d_oh_mm = _tighten_for_crack_width(
+            M_DL_oh + 0.75 * (impact_factor * M_LL_oh + M_barrier_kNm),
+            dia_oh, spc_oh, As_oh, deck_t_mm, cover_top_mm, fctm, Es, Ecm, allowed_dias)
 
         Mu_oh = _moment_capacity_kNm(fy, As_oh, d_oh_mm, fck)
         oh_ok = Mu_oh >= M_ULS_oh
@@ -936,6 +977,60 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     else:
         overhang_sls_lines = []
 
+    # ── 11b. deflection check (IRC 112:2020 Cl.12.4.1 & Cl.12.4.2) ──────────
+    # Cl.12.4.1 limits are for LIVE LOAD under frequent combination only (DL pre-cambered).
+    # Cracked moment of inertia used per Cl.12.4.2 (conservative).
+    # Interior span: central point load → δ = M·L²/(12·Ecm·I_cr).
+    # Overhang cantilever: point-load-at-tip form → δ = M·L²/(3·Ecm·I_cr).
+    M_LL_defl_bot = 0.75 * impact_factor * M_LL_kNm          # LL-only frequent demand
+    _, Ie_bot, _ = _cracked_section(As_bot, d_bot_mm, Es, Ecm)
+    S_mm = S * 1000.0
+    delta_interior = (M_LL_defl_bot * 1.0e6 * S_mm ** 2
+                      / (12.0 * Ecm * Ie_bot))               # mm — central point load
+    delta_interior_limit = S_mm / 800.0                       # Span/800 — vehicular
+    defl_interior_ok = delta_interior <= delta_interior_limit
+    ur_bot_defl = delta_interior / delta_interior_limit if delta_interior_limit > 0 else 9.999
+
+    if overhang_m > 0.01:
+        M_LL_defl_oh = 0.75 * impact_factor * M_LL_oh         # LL-only frequent demand
+        _, Ie_oh, _ = _cracked_section(As_oh, d_oh_mm, Es, Ecm)
+        L_oh_mm = overhang_m * 1000.0
+        delta_oh = (M_LL_defl_oh * 1.0e6 * L_oh_mm ** 2
+                    / (3.0 * Ecm * Ie_oh))                    # mm
+        delta_oh_limit = L_oh_mm / 300.0                      # Cantilever/300 — vehicular
+        defl_oh_ok = delta_oh <= delta_oh_limit
+        ur_oh_defl = delta_oh / delta_oh_limit if delta_oh_limit > 0 else 9.999
+        defl_oh_lines = [
+            "",
+            "Cantilever Overhang — Vehicular  [Limit: L/300]",
+            "-" * 40,
+            f"  I<sub>cr</sub> (cracked, Cl.12.4.2):{Ie_oh:.4e} mm⁴/m",
+            f"  δ (frequent combo)      : {delta_oh:.3f} mm",
+            f"  Limit (L<sub>oh</sub>/300)         : {delta_oh_limit:.3f} mm",
+            f"  Status                  : {'PASS' if defl_oh_ok else 'FAIL'}",
+        ]
+    else:
+        delta_oh = delta_oh_limit = Ie_oh = 0.0
+        defl_oh_ok = True
+        ur_oh_defl = 0.0
+        defl_oh_lines = []
+
+    defl_lines = [
+        "",
+        "=" * 52,
+        "Deflection Check  (IRC 112:2020 Cl.12.4.1)",
+        "=" * 52,
+        "",
+        "Interior Span — Vehicular  [Limit: Span/800]",
+        "-" * 40,
+        f"  LL frequent M (ψ₁=0.75) : {M_LL_defl_bot:.3f} kNm/m  (LL only, Cl.12.4.1)",
+        f"  I<sub>cr</sub> (cracked, Cl.12.4.2):{Ie_bot:.4e} mm⁴/m",
+        f"  δ (frequent combo)      : {delta_interior:.3f} mm",
+        f"  Limit (S/800)           : {delta_interior_limit:.3f} mm",
+        f"  Status                  : {'PASS' if defl_interior_ok else 'FAIL'}",
+        *defl_oh_lines,
+    ]
+
     # ── utilization ratios (demand / capacity) ────────────────────────────────
     ur_bot_uls = M_ULS_bot_kNm / Mu_bot if Mu_bot > 0 else 9.999
     ur_top_uls = M_ULS_top_kNm / Mu_top if Mu_top > 0 else 9.999
@@ -1059,6 +1154,7 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         *overhang_lines,
         *shear_lines,
         *sls_lines,
+        *defl_lines,
     ]
     design_check_text = "\n".join(lines)
 
@@ -1118,6 +1214,8 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         "ur_top_crack"           : round(ur_top_crack, 3),
         "ur_bot_shear"           : round(ur_bot_shear, 3),
         "ur_bot_punch"           : round(ur_bot_punch, 3),
+        # ── deflection utilization ratios (IRC 112:2020 Cl.12.4.1) ──────────
+        "ur_bot_defl"            : round(ur_bot_defl, 3),
         # ── design check report text ────────────────────────────────────────
         "deck_design_check"      : design_check_text,
     }
@@ -1138,6 +1236,7 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
             "ur_oh_crack"            : round(cw_oh["wk"] / cw_oh["wk_lim"], 3),
             "ur_oh_shear"            : round(ur_oh_shear, 3),
             "ur_oh_punch"            : round(ur_oh_punch, 3),
+            "ur_oh_defl"             : round(ur_oh_defl, 3),
         })
     if has_composite:
         result.update({
@@ -1234,6 +1333,13 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         KEY_DD_COVER_OK       : (cover_top_ok and cover_bot_ok),
         KEY_DD_SPACING_MAX    : _SPACING_MAX_MM,
         KEY_DD_HAS_OVERHANG   : has_overhang,
+        # -- 5.17(h) deflection --
+        KEY_DD_DEFL_INTERIOR       : round(delta_interior, 3),
+        KEY_DD_DEFL_INTERIOR_LIMIT : round(delta_interior_limit, 3),
+        KEY_DD_DEFL_INTERIOR_OK    : defl_interior_ok,
+        KEY_DD_DEFL_OH             : round(delta_oh, 3),
+        KEY_DD_DEFL_OH_LIMIT       : round(delta_oh_limit, 3),
+        KEY_DD_DEFL_OH_OK          : defl_oh_ok,
     }
 
     return result, report_values

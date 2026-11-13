@@ -275,6 +275,14 @@ KEY_DD_SHEAR_VED        = "deck.report.shear_ved"       # ULS design shear deman
 KEY_DD_SHEAR_VRDC       = "deck.report.shear_vrdc"      # shear resistance V_Rd,c = v_Rd,c·b_w·d (kN/m)
 KEY_DD_SHEAR_OK         = "deck.report.shear_ok"        # bool — V_Ed ≤ V_Rd,c
 
+# -- 5.17(h) Deflection (IRC 112 Cl.12.4.1) --
+KEY_DD_DEFL_INTERIOR        = "deck.report.defl_interior"       # mid-span deflection under frequent combo (mm)
+KEY_DD_DEFL_INTERIOR_LIMIT  = "deck.report.defl_interior_limit" # allowable = S/800 (mm)
+KEY_DD_DEFL_INTERIOR_OK     = "deck.report.defl_interior_ok"    # bool — δ ≤ S/800
+KEY_DD_DEFL_OH              = "deck.report.defl_oh"             # cantilever tip deflection (mm)
+KEY_DD_DEFL_OH_LIMIT        = "deck.report.defl_oh_limit"       # allowable = L_oh/300 (mm)
+KEY_DD_DEFL_OH_OK           = "deck.report.defl_oh_ok"          # bool — δ ≤ L_oh/300
+
 # -- 5.17(g) Reinforcement detailing (provided bars) --
 KEY_DD_DIA_BOT          = "deck.report.dia_bot"         # bottom bar diameter (mm)
 KEY_DD_SPC_BOT          = "deck.report.spc_bot"         # bottom bar spacing (mm)
@@ -1299,6 +1307,7 @@ KEY_DD_CHECK_STRESS_REINF     = "deck.sls_stress_reinforcement"
 KEY_DD_CHECK_CRACK            = "deck.crack_width"
 KEY_DD_CHECK_COMP_TRANS_SHEAR = "deck.composite_transverse_shear"
 KEY_DD_CHECK_COMP_CRACK       = "deck.composite_crack_control"
+KEY_DD_CHECK_DEFLECTION       = "deck.deflection"
 
 # Ordered list used for card layout (left-col, right-col alternating)
 DESIGN_CHECK_ORDER = [
