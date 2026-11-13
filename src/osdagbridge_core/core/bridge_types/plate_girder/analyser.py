@@ -1934,7 +1934,9 @@ class BridgeGrillageModel:
             return IRC6_2017.cl_208_3_impact_factor(self.L, KEY_VEHICLE[1])
         raise ValueError(f"No impact factor defined for vehicle type {vehicle_type!r}")
 
-    def add_vehicle_load_cases_from_combinations(self, model=None):
+    def add_vehicle_load_cases_from_combinations(self, model=None,
+                                                 include_70r_wheeled=True,
+                                                 include_70r_tracked=True):
         """
         Create vehicle load cases using coordinates from vehicle_lane_coordinates().
 
@@ -1943,13 +1945,15 @@ class BridgeGrillageModel:
         - Applies lane factors (alf)
         - Applies dynamic load allowance (dla) per vehicle, stored in the load
           case's load_groups so the governing LL case and combinations keep it
+        - include_70r_wheeled / include_70r_tracked select which Class 70R
+          combinations are built (UI vehicle selection)
         """
 
         model = model or self.model
         if model is None:
             raise ValueError("Model not created yet.")
 
-        vehicle_cases = self.vehicle_lane_coordinates()
+        vehicle_cases = self.vehicle_lane_coordinates(include_70r_wheeled, include_70r_tracked)
 
         # IRC 6:2017 Cl.204.4 Table 6A — multi-lane live-load reduction factors (keyfile.LANE_REDUCTION_FACTORS).
         alf = list(LANE_REDUCTION_FACTORS)
