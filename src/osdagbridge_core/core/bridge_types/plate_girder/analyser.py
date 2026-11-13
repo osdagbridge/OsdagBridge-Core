@@ -1075,6 +1075,10 @@ class BridgeGrillageModel:
                 return float(sum(IRC6_2017.cl_204_1_ClassA_vehicle()['wheel_loads'])) / kN
             elif vehicle_type == 'Class70R':
                 return float(sum(IRC6_2017.cl_204_1_Class70R_vehicle_wheel()['wheel_loads'])) / kN
+            elif vehicle_type == 'Class70RT':
+                # Two tracks, each a uniform load over the 4.57 m contact length.
+                d = IRC6_2017.cl_204_1_Class70R_vehicle_track()
+                return float(len(d['z']) * d['wheel_loads_udl'] * (d['x'][1] - d['x'][0])) / kN
             elif vehicle_type == 'SV':
                 return float(IRC6_2017.cl_204_5_1_special_vehicle()['total_load_kN'])
         except Exception:
@@ -1719,22 +1723,28 @@ class BridgeGrillageModel:
     #   Live Load
     # ============================================================
 
-    def vehicle_lane_coordinates(self):
+    def vehicle_lane_coordinates(self, include_70r_wheeled=True, include_70r_tracked=True):
         """
         Calculates vehicle-to-coordinate mappings for all combinations
         as per IRC:6-2017 Table 6 and Table 6A.
 
         Returns vehicle placement for each case where:
         - ClassA occupies 1 lane
-        - Class70R occupies 2 lanes
+        - Class70R (wheeled) / Class70RT (tracked) occupies 2 lanes
+
+        Per Table 6A Note (a), every combination carrying Class 70R wheeled is
+        repeated with Class 70R tracked in the same position. Cases are
+        numbered 1..n: wheeled/Class A cases first, then the tracked ones.
 
         z -> transverse direction
         x -> longitudinal direction
 
         Parameters
         ----------
-        carriageway_width : float, optional
-            Carriageway width in metres. If omitted, reads from self.layout.
+        include_70r_wheeled : bool
+            Keep the combinations carrying Class 70R wheeled (default True).
+        include_70r_tracked : bool
+            Add the Class 70R tracked combinations (default True).
 
         Returns
         -------
@@ -1841,6 +1851,26 @@ class BridgeGrillageModel:
 
             result_cases.append(case_data)
 
+        # IRC 6:2017 Table 6A Note (a) — Class 70R wheeled may be replaced by
+        # Class 70R tracked: repeat each 70R combination with the tracked
+        # vehicle at the same positions.
+        base_cases, tracked_cases = [], []
+        for case in result_cases:
+            combos = case['combinations']
+            if 'Class70R' in combos:
+                if include_70r_tracked:
+                    tracked_cases.append({'combinations': {
+                        ('Class70RT' if k == 'Class70R' else k): v
+                        for k, v in combos.items()
+                    }})
+                if not include_70r_wheeled:
+                    continue
+            base_cases.append(case)
+
+        result_cases = base_cases + tracked_cases
+        for n, case in enumerate(result_cases, start=1):
+            case['case_num'] = n
+
         # print(f"Vehicle lane coordinate cases: {result_cases}")
         return result_cases
 
@@ -1894,12 +1924,14 @@ class BridgeGrillageModel:
     def _vehicle_impact_factor(self, vehicle_type):
         """
         IRC 6:2017 impact factor (IM) for one vehicle on this steel span:
-        Class A from Cl.208.2, Class 70R wheeled from Cl.208.3.
+        Class A from Cl.208.2, Class 70R wheeled and tracked from Cl.208.3.
         """
         if vehicle_type == "ClassA":
             return IRC6_2017.cl_208_2_impact_factor(self.L)
         if vehicle_type == "Class70R":
             return IRC6_2017.cl_208_3_impact_factor(self.L, KEY_VEHICLE[0])
+        if vehicle_type == "Class70RT":
+            return IRC6_2017.cl_208_3_impact_factor(self.L, KEY_VEHICLE[1])
         raise ValueError(f"No impact factor defined for vehicle type {vehicle_type!r}")
 
     def add_vehicle_load_cases_from_combinations(self, model=None):
@@ -1976,13 +2008,15 @@ class BridgeGrillageModel:
         Return the full axle-span length (m) for a vehicle type by reading the
         last axle position from the IRC6_2017 local geometry.
 
-        Class70R last axle ≈ 15.12 m, ClassA last axle ≈ 20.30 m,
-        SV last axle ≈ 38.46 m.
+        Class70R last axle ≈ 15.12 m, Class70RT track length 4.57 m,
+        ClassA last axle ≈ 20.30 m, SV last axle ≈ 38.46 m.
         Falls back to 25.0 m for unknown types.
         """
         try:
             if vehicle_type == 'Class70R':
                 data = IRC6_2017.cl_204_1_Class70R_vehicle_wheel()
+            elif vehicle_type == 'Class70RT':
+                data = IRC6_2017.cl_204_1_Class70R_vehicle_track()
             elif vehicle_type == 'ClassA':
                 data = IRC6_2017.cl_204_1_ClassA_vehicle()
             elif vehicle_type == 'SV':
