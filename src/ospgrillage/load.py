@@ -915,6 +915,15 @@ class PatchLoading(Loads):
         # procedure to define lines of patch
         self._define_patch_edge_lines()
 
+    def move_load(self, ref_point: Point):
+        """
+        Move the patch by ``ref_point``, then rebuild its edge lines and
+        magnitude interpolator at the new position — both are built from the
+        vertices in ``__init__`` and would otherwise stay at the old position.
+        """
+        super().move_load(ref_point)
+        self._define_patch_edge_lines()
+
     def _define_patch_edge_lines(self):
         # create each line
         self.line_1 = LineLoading(point1=self.load_point_1, point2=self.load_point_2)
