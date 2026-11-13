@@ -2113,8 +2113,8 @@ class BridgeGrillageModel:
         model : Grillage, optional
             Target model; defaults to ``self.model``.
         apply_dla : bool
-            Apply the Cl.208.3 dynamic load allowance as the load-case factor
-            (default True).
+            Apply the Cl.204.6 impact allowance (50% of the Cl.208.2 impact
+            factor) as the load-case factor (default True).
 
         Returns
         -------
@@ -2125,8 +2125,10 @@ class BridgeGrillageModel:
         if model is None:
             raise ValueError("Model not created yet.")
 
-        # IRC 6:2017 Cl.208.3 — dynamic load allowance computed from actual span.
-        dla = 1.0 + IRC6_2017.cl_208_3_impact_factor(self.L) if apply_dla else 1.0
+        # IRC 6:2017 Cl.204.6 — 50% of the Cl.208.2 impact factor for the fatigue truck.
+        dla = 1.0 + 0.5 * IRC6_2017.cl_208_2_impact_factor(self.L) if apply_dla else 1.0
+        # Remembered so the moving fatigue case uses the same factor.
+        self.fatigue_dla = dla
 
         self.fatigue_load_cases_list = []
         self.fatigue_vehicles_by_case = {}
@@ -2206,7 +2208,8 @@ class BridgeGrillageModel:
             for vehicle in vehicles:
                 moving_load.add_load(vehicle)
 
-            model.add_load_case(moving_load)
+            # IRC 6:2017 Cl.204.6 — same impact allowance as the static fatigue case.
+            model.add_load_case(moving_load, load_factor=getattr(self, "fatigue_dla", 1.0))
             self.moving_fatigue_load_cases_list.append(moving_load)
 
         return self.moving_fatigue_load_cases_list
