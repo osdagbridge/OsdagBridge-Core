@@ -222,7 +222,8 @@ def _v_Rd_c_MPa(As_mm2: float, d_mm: float, fck_MPa: float,
 def _tighten_for_oneway_shear(V_ULS_kN_per_m: float, dia: float, spc: float,
                               As: float, deck_t_mm: float, cover_mm: float,
                               fck: float, allowed_dias: list,
-                              target_ur: float = _TIGHTEN_TARGET_UR) -> tuple:
+                              target_ur: float = _TIGHTEN_TARGET_UR,
+                              max_iterations: int = 60) -> tuple:
     """
     Increase reinforcement until the one-way shear capacity (IRC 112:2020
     Cl.10.3.2, VRd,c = v_Rd,c·d, no links) leaves the wanted margin. v_Rd,c rises
@@ -234,7 +235,7 @@ def _tighten_for_oneway_shear(V_ULS_kN_per_m: float, dia: float, spc: float,
     """
     V_target = V_ULS_kN_per_m / target_ur
     d_mm = deck_t_mm - cover_mm - dia / 2.0
-    for _ in range(60):
+    for _ in range(max_iterations):
         VRd_c = _v_Rd_c_MPa(As, d_mm, fck) * d_mm        # MPa·mm = N/mm = kN/m
         if VRd_c >= V_target:
             break
@@ -291,7 +292,8 @@ def _tighten_for_sls_stress(M_SLS_char_kNm: float, dia: float, spc: float,
                             As: float, deck_t_mm: float, cover_mm: float,
                             fck: float, fy: float, Es: float, Ecm: float,
                             allowed_dias: list,
-                            target_ur: float = _TIGHTEN_TARGET_UR) -> tuple:
+                            target_ur: float = _TIGHTEN_TARGET_UR,
+                            max_iterations: int = 60) -> tuple:
     """
     Increase the reinforcement until the SLS steel stress leaves the wanted margin
     (IRC 112:2020 Cl.12.2.1, σs ≤ 0.8·fy). The target is target_ur·(0.8·fy) so the
@@ -303,7 +305,7 @@ def _tighten_for_sls_stress(M_SLS_char_kNm: float, dia: float, spc: float,
     """
     ss_target = target_ur * 0.80 * fy
     d_mm = deck_t_mm - cover_mm - dia / 2.0
-    for _ in range(60):
+    for _ in range(max_iterations):
         sigma_s = _sls_stress(M_SLS_char_kNm, As, d_mm, fck, fy, Es, Ecm)["sigma_s"]
         if sigma_s <= ss_target:
             break
@@ -354,13 +356,14 @@ def _sls_crack_width(M_SLS_kNm: float, As_mm2: float, dia_mm: float,
 def _tighten_for_crack_width(M_SLS_freq_kNm: float, dia: float, spc: float,
                               As: float, deck_t_mm: float, cover_mm: float,
                               fctm: float, Es: float, Ecm: float,
-                              allowed_dias: list) -> tuple:
+                              allowed_dias: list,
+                              max_iterations: int = 60) -> tuple:
     """
     Increase reinforcement until wk ≤ 0.3 mm (IRC 112:2020 Cl.12.3.4, frequent combo).
     Returns (dia, spc, As, d). Only adds steel; stops when bars are maxed out.
     """
     d_mm = deck_t_mm - cover_mm - dia / 2.0
-    for _ in range(60):
+    for _ in range(max_iterations):
         cw = _sls_crack_width(M_SLS_freq_kNm, As, dia, d_mm, deck_t_mm,
                                cover_mm, fctm, Es, Ecm)
         if cw["ok"]:
