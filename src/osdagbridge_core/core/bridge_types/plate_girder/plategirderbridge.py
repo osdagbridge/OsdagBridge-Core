@@ -1063,7 +1063,9 @@ class PlateGirderBridge:
 
         report_inputs = self.input_dict.copy()
         output_dict   = dict(self.output_dict)  # MappingProxyType → dict
-
+        output_dict["build_vertical_support_reactions"] = getattr(
+            self, "_build_vertical_support_reactions", {}
+        )
         # ── Chapter 4: analysis summary for Tables ──────────────────
         lc_sum  = getattr(self, '_lc_summary',       None)
         rxn_sum = getattr(self, '_reaction_summary',  None)
@@ -2756,11 +2758,13 @@ class PlateGirderBridge:
         from osdagbridge_core.core.bridge_types.plate_girder.results_data import (
             build_load_effects_cache, build_forces_summary,
         )
+        from osdagbridge_core.core.reports.chap4 import build_vertical_support_reactions
         results = self.get_results_dataset()
         if results is None:
             self._load_effects_cache        = {}
             self._lc_summary       = {}
             self._reaction_summary= {}
+            self._build_vertical_support_reactions = {}
             self.output_dict["load_effects_cache"] = {}
             return
         edge_dist = self.get_edge_dist()
@@ -2769,6 +2773,7 @@ class PlateGirderBridge:
             bridge=self.grillage_model,
             edge_dist=edge_dist,
         )
+        self._build_vertical_support_reactions = build_vertical_support_reactions(rh)
         self._load_effects_cache = build_load_effects_cache(rh)
         ch4 = build_forces_summary(rh, self._load_effects_cache)
         self._lc_summary       = ch4["load_cases"]
