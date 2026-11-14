@@ -592,7 +592,7 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
     span = float(working_input_dict.get(KEY_SPAN))
     design_mode  = str(working_input_dict.get(KEY_DESIGN_MODE, 'Optimized')).strip()
     symmetry = 'Girder Symmetric' if design_mode == 'Optimized' else 'Girder Unsymmetric'
-    section_props = solver.compute_section_properties(span=span, symmetry=symmetry)
+    section_props = solver.compute_section_properties(span=span, symmetry=symmetry, snap_to_sail=design_mode != 'Optimized')
 
     count = int(float(str(working_input_dict.get(KEY_TS_NO_OF_GIRDERS)).strip()))
 
