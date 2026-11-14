@@ -3,7 +3,6 @@ import xarray as xr
 # from math import sqrt, pi
 # import openseespy.opensees as ops
 from osdagbridge_core.core.utils.codes.irc6_2017 import IRC6_2017
-from osdagbridge_core.core.utils.codes.keyfile import LANE_REDUCTION_FACTORS
 from osdagbridge_core.core.utils.common import *
 from osdagbridge_core.core.bridge_components.super_structure.plate_girder.geometry import (
     girder_self_weight_kN_m,
@@ -1043,8 +1042,8 @@ class BridgeGrillageModel:
     def _total_dead_load_kN(self) -> float:
         """
         Total unfactored dead load (kN) used as the seismic mass per
-        IRC:6-2017 Cl.218.5: the ``DL`` combination (self weight, deck,
-        footpath and SIDL) plus the wearing-course (surfacing) case, which
+        IRC:6-2017 Cl.218.5: the ``DL`` combination (self weight, deck and
+        SIDL; the footway load is live load, see _seismic_live_load_kN) plus the wearing-course (surfacing) case, which
         is registered separately as ``DW``.
 
         Derived on demand from the registered load cases — no per-method
@@ -1075,6 +1074,10 @@ class BridgeGrillageModel:
                 return float(sum(IRC6_2017.cl_204_1_ClassA_vehicle()['wheel_loads'])) / kN
             elif vehicle_type == 'Class70R':
                 return float(sum(IRC6_2017.cl_204_1_Class70R_vehicle_wheel()['wheel_loads'])) / kN
+            elif vehicle_type == 'Class70RT':
+                # Two tracks, each a uniform load over the 4.57 m contact length.
+                d = IRC6_2017.cl_204_1_Class70R_vehicle_track()
+                return float(len(d['z']) * d['wheel_loads_udl'] * (d['x'][1] - d['x'][0])) / kN
             elif vehicle_type == 'SV':
                 return float(IRC6_2017.cl_204_5_1_special_vehicle()['total_load_kN'])
         except Exception:
@@ -1130,16 +1133,22 @@ class BridgeGrillageModel:
         except (IndexError, ValueError):
             return None
 
-    def _get_governing_ll_kN(self) -> float:
-        """Total unfactored vehicle weight (kN) for the governing live load case."""
-        case_num = self._governing_case_num()
-        if case_num is None:
-            return 0.0
-        vehicles = self.vehicle_moving_loads_by_case.get(case_num, [])
-        return sum(
-            self._vehicle_total_weight_kN(self.vehicle_type_map.get(id(v), ''))
-            for v in vehicles
+    def _seismic_live_load_kN(self) -> float:
+        """
+        Live load (kN) whose 20 % enters the seismic mass — IRC:6-2017 Cl.218.5.1 /
+        218.5.2: the total unfactored vehicle weight, without impact, of the
+        heaviest Table 6A vehicle case. The vehicle cases exist from stage 4B on,
+        so this is available when the seismic loads are built (4E), before the
+        governing LL case is chosen (4F). The footway live load (Cl.206.1) is
+        added, as it is live load and not part of the DL seismic mass.
+        """
+        vehicles_kN = max(
+            (sum(self._vehicle_total_weight_kN(self.vehicle_type_map.get(id(v), ''))
+                 for v in vehicles)
+             for vehicles in self.vehicle_moving_loads_by_case.values()),
+            default=0.0,
         )
+        return vehicles_kN + self._load_case_resultant_kN(getattr(self, "footpath_load_case", None))
 
     @staticmethod
     def _spectral_sa_g(soil_type: int, T: float) -> float:
@@ -1181,7 +1190,7 @@ class BridgeGrillageModel:
 
         DL and LL default to model state: total DL is integrated from the
         registered dead-load cases (``_total_dead_load_kN()``) and LL from the
-        governing vehicle case (``_get_governing_ll_kN()``). Explicit
+        heaviest Table 6A vehicle case (``_seismic_live_load_kN()``). Explicit
         ``dead_load_kN`` / ``live_load_kN`` values (the seismic tab's Custom
         mode) override the automatic derivation.
 
@@ -1223,7 +1232,7 @@ class BridgeGrillageModel:
             Custom dead load for seismic force; None → derived from model state.
         live_load_kN : float | None
             Custom live load for seismic force; None → derived from the
-            governing vehicle case.
+            heaviest Table 6A vehicle case.
         partial_safety_factor : float
             ULS load factor for combination cases (IRC Table B.2 seismic: 1.5).
 
@@ -1241,10 +1250,10 @@ class BridgeGrillageModel:
         if dead_load_kN is None:
             dead_load_kN = self._total_dead_load_kN()
         if live_load_kN is None:
-            live_load_kN = self._get_governing_ll_kN()
+            live_load_kN = self._seismic_live_load_kN()
         print(
             f"Seismic inputs: DL={dead_load_kN:.1f} kN  "
-            f"Governing LL={live_load_kN:.1f} kN"
+            f"Seismic LL (heaviest Table 6A case)={live_load_kN:.1f} kN"
         )
 
         # ── 1. Seismic coefficients (IRC:6-2017 Cl.218.5.1) ──
@@ -1598,10 +1607,12 @@ class BridgeGrillageModel:
         if model is None:
             raise ValueError("Model is not available. Create model before adding loads.")
 
+        # The footway load (Cl.206.1) is a live load — IRC:6-2017 Table B.2 /
+        # B.3 row "Carriageway live load ... and Footway live load" — so it is
+        # carried in the LL case (create_governing_ll_load_case), not here.
         _DL_ATTRS = [
             "self_weight_load_case",
             "deck_load_case",
-            "footpath_load_case",
             "sidl_combination",
         ]
 
@@ -1719,22 +1730,29 @@ class BridgeGrillageModel:
     #   Live Load
     # ============================================================
 
-    def vehicle_lane_coordinates(self):
+    def vehicle_lane_coordinates(self, include_70r_wheeled=True, include_70r_tracked=True,
+                                 include_class_a=True):
         """
         Calculates vehicle-to-coordinate mappings for all combinations
         as per IRC:6-2017 Table 6 and Table 6A.
 
         Returns vehicle placement for each case where:
         - ClassA occupies 1 lane
-        - Class70R occupies 2 lanes
+        - Class70R (wheeled) / Class70RT (tracked) occupies 2 lanes
+
+        Per Table 6A Note (a), every combination carrying Class 70R wheeled is
+        repeated with Class 70R tracked in the same position. Cases are
+        numbered 1..n: wheeled/Class A cases first, then the tracked ones.
 
         z -> transverse direction
         x -> longitudinal direction
 
         Parameters
         ----------
-        carriageway_width : float, optional
-            Carriageway width in metres. If omitted, reads from self.layout.
+        include_70r_wheeled : bool
+            Keep the combinations carrying Class 70R wheeled (default True).
+        include_70r_tracked : bool
+            Add the Class 70R tracked combinations (default True).
 
         Returns
         -------
@@ -1841,6 +1859,41 @@ class BridgeGrillageModel:
 
             result_cases.append(case_data)
 
+        # IRC 6:2017 Table 6A Note (a) — Class 70R wheeled may be replaced by
+        # Class 70R tracked: repeat each 70R combination with the tracked
+        # vehicle at the same positions.
+        base_cases, tracked_cases = [], []
+        for case in result_cases:
+            combos = case['combinations']
+            if 'Class70R' in combos:
+                if include_70r_tracked:
+                    tracked_cases.append({'combinations': {
+                        ('Class70RT' if k == 'Class70R' else k): v
+                        for k, v in combos.items()
+                    }})
+                if not include_70r_wheeled:
+                    continue
+            base_cases.append(case)
+
+        result_cases = base_cases + tracked_cases
+
+        # UI selection — Class A unticked: drop it from every combination,
+        # then drop cases left empty or identical to an earlier one.
+        if not include_class_a:
+            kept, seen = [], set()
+            for case in result_cases:
+                combos = {k: v for k, v in case['combinations'].items() if k != 'ClassA'}
+                sig = tuple(sorted((k, tuple(map(tuple, v))) for k, v in combos.items()))
+                if not combos or sig in seen:
+                    continue
+                seen.add(sig)
+                case['combinations'] = combos
+                kept.append(case)
+            result_cases = kept
+
+        for n, case in enumerate(result_cases, start=1):
+            case['case_num'] = n
+
         # print(f"Vehicle lane coordinate cases: {result_cases}")
         return result_cases
 
@@ -1891,26 +1944,54 @@ class BridgeGrillageModel:
 
         return all_vehicle_load_cases
 
-    def add_vehicle_load_cases_from_combinations(self, model=None):
+    def _vehicle_impact_factor(self, vehicle_type):
+        """
+        IRC 6:2017 impact factor (IM) for one vehicle on this steel span:
+        Class A from Cl.208.2, Class 70R wheeled and tracked from Cl.208.3.
+        """
+        if vehicle_type == "ClassA":
+            return IRC6_2017.cl_208_2_impact_factor(self.L)
+        if vehicle_type == "Class70R":
+            return IRC6_2017.cl_208_3_impact_factor(self.L, KEY_VEHICLE[0])
+        if vehicle_type == "Class70RT":
+            return IRC6_2017.cl_208_3_impact_factor(self.L, KEY_VEHICLE[1])
+        raise ValueError(f"No impact factor defined for vehicle type {vehicle_type!r}")
+
+    @staticmethod
+    def _vehicle_lane_count(vehicle_type):
+        """
+        Number of traffic lanes one vehicle occupies (IRC 6:2017 Table 6 / 6A):
+        Class A takes one lane, Class 70R (wheeled or tracked) two.
+        """
+        if vehicle_type == "ClassA":
+            return 1
+        if vehicle_type in ("Class70R", "Class70RT"):
+            return 2
+        raise ValueError(f"No lane count defined for vehicle type {vehicle_type!r}")
+
+    def add_vehicle_load_cases_from_combinations(self, model=None,
+                                                 include_70r_wheeled=True,
+                                                 include_70r_tracked=True,
+                                                 include_class_a=True):
         """
         Create vehicle load cases using coordinates from vehicle_lane_coordinates().
 
         - Creates empty moving load list
         - Uses global coordinates from vehicle combinations
-        - Applies lane factors (alf)
-        - Applies dynamic load allowance (dla)
+        - Applies the IRC 6:2017 Cl.205 lane reduction factor (one per case)
+        - Applies dynamic load allowance (dla) per vehicle, stored in the load
+          case's load_groups so the governing LL case and combinations keep it
+        - include_70r_wheeled / include_70r_tracked select which Class 70R
+          combinations are built (UI vehicle selection)
         """
 
         model = model or self.model
         if model is None:
             raise ValueError("Model not created yet.")
 
-        vehicle_cases = self.vehicle_lane_coordinates()
+        vehicle_cases = self.vehicle_lane_coordinates(include_70r_wheeled, include_70r_tracked,
+                                                      include_class_a)
 
-        # IRC 6:2017 Cl.204.4 Table 6A — multi-lane live-load reduction factors (keyfile.LANE_REDUCTION_FACTORS).
-        alf = list(LANE_REDUCTION_FACTORS)
-        # IRC 6:2017 Cl.208.3 — dynamic load allowance computed from actual span.
-        dla = 1.0 + IRC6_2017.cl_208_3_impact_factor(self.L)
         # -------------------------------------------------
         # Reset stores
         # -------------------------------------------------
@@ -1931,11 +2012,18 @@ class BridgeGrillageModel:
             lc = og.create_load_case(name=f"Case{case_num} {vehicle_summary}")
             self.vehicle_moving_loads_by_case[case_num] = []
 
-            for vehicle_type, coord_list in combinations.items():
-                for i, (x_coord, z_coord) in enumerate(coord_list):
+            # IRC 6:2017 Cl.205 Table 8 — one reduction for the whole case,
+            # from the number of lanes its vehicles load.
+            n_lanes = sum(
+                len(coord_list) * self._vehicle_lane_count(vehicle_type)
+                for vehicle_type, coord_list in combinations.items()
+            )
+            lane_factor = IRC6_2017.cl_205_lane_reduction_factor(n_lanes)
 
-                    # Lane factor resets per vehicle type (alf indexed within coord_list)
-                    lane_factor = alf[i] if alf and i < len(alf) else 1.0
+            for vehicle_type, coord_list in combinations.items():
+                # IRC 6:2017 Cl.208.2 / 208.3 — impact factor for this vehicle type.
+                dla = 1.0 + self._vehicle_impact_factor(vehicle_type)
+                for x_coord, z_coord in coord_list:
 
                     vehicle_generator = og.create_load_model(
                         model_type=vehicle_type.upper()
@@ -1943,12 +2031,12 @@ class BridgeGrillageModel:
                     vehicle = vehicle_generator.create()
                     vehicle.set_global_coord(og.Point(x_coord, 0.0, z_coord))
 
-                    lc.add_load(load=vehicle, load_factor=lane_factor)
+                    lc.add_load(load=vehicle, load_factor=lane_factor * dla)
 
                     self.vehicle_moving_loads_by_case[case_num].append(vehicle)
                     self.vehicle_type_map[id(vehicle)] = vehicle_type
 
-            model.add_load_case(lc, load_factor=dla)
+            model.add_load_case(lc, load_factor=1.0)
             self.vehicle_load_cases_list.append(lc)
 
         # Flat list kept for backward-compat guard checks
@@ -1964,13 +2052,15 @@ class BridgeGrillageModel:
         Return the full axle-span length (m) for a vehicle type by reading the
         last axle position from the IRC6_2017 local geometry.
 
-        Class70R last axle ≈ 15.12 m, ClassA last axle ≈ 20.30 m,
-        SV last axle ≈ 38.46 m.
+        Class70R last axle ≈ 15.12 m, Class70RT track length 4.57 m,
+        ClassA last axle ≈ 20.30 m, SV last axle ≈ 38.46 m.
         Falls back to 25.0 m for unknown types.
         """
         try:
             if vehicle_type == 'Class70R':
                 data = IRC6_2017.cl_204_1_Class70R_vehicle_wheel()
+            elif vehicle_type == 'Class70RT':
+                data = IRC6_2017.cl_204_1_Class70R_vehicle_track()
             elif vehicle_type == 'ClassA':
                 data = IRC6_2017.cl_204_1_ClassA_vehicle()
             elif vehicle_type == 'SV':
@@ -2101,8 +2191,8 @@ class BridgeGrillageModel:
         model : Grillage, optional
             Target model; defaults to ``self.model``.
         apply_dla : bool
-            Apply the Cl.208.3 dynamic load allowance as the load-case factor
-            (default True).
+            Apply the Cl.204.6 impact allowance (50% of the Cl.208.2 impact
+            factor) as the load-case factor (default True).
 
         Returns
         -------
@@ -2113,8 +2203,10 @@ class BridgeGrillageModel:
         if model is None:
             raise ValueError("Model not created yet.")
 
-        # IRC 6:2017 Cl.208.3 — dynamic load allowance computed from actual span.
-        dla = 1.0 + IRC6_2017.cl_208_3_impact_factor(self.L) if apply_dla else 1.0
+        # IRC 6:2017 Cl.204.6 — 50% of the Cl.208.2 impact factor for the fatigue truck.
+        dla = 1.0 + 0.5 * IRC6_2017.cl_208_2_impact_factor(self.L) if apply_dla else 1.0
+        # Remembered so the moving fatigue case uses the same factor.
+        self.fatigue_dla = dla
 
         self.fatigue_load_cases_list = []
         self.fatigue_vehicles_by_case = {}
@@ -2194,7 +2286,8 @@ class BridgeGrillageModel:
             for vehicle in vehicles:
                 moving_load.add_load(vehicle)
 
-            model.add_load_case(moving_load)
+            # IRC 6:2017 Cl.204.6 — same impact allowance as the static fatigue case.
+            model.add_load_case(moving_load, load_factor=getattr(self, "fatigue_dla", 1.0))
             self.moving_fatigue_load_cases_list.append(moving_load)
 
         return self.moving_fatigue_load_cases_list
@@ -2307,10 +2400,8 @@ class BridgeGrillageModel:
             return self.sv_load_cases_list
 
         eccentricity_m = abs(placement["eccentricity_mm"]) / 1000.0
-        # IRC 6:2017 Table 6A lane reduction and Cl.208.3 impact, for the
+        # IRC 6:2017 Cl.205 lane reduction and Cl.208.2 / 208.3 impact, for the
         # non-SV carriageway only — same factors as the Table 6A vehicle cases.
-        alf = list(LANE_REDUCTION_FACTORS)
-        dla = 1.0 + IRC6_2017.cl_208_3_impact_factor(self.L)
 
         for sv_side, other_side in (("left", "right"), ("right", "left")):
             sv_cw, other_cw = cws[sv_side], cws[other_side]
@@ -2330,6 +2421,10 @@ class BridgeGrillageModel:
                     others.append(("Class70R", (lane_z[lane] + lane_z[lane + 1]) / 2))
                     lane += 2
                 summary = " + ".join(f"{n}x{t}" for t, n in combo.items())
+                # IRC 6:2017 Cl.205 Table 8 — one reduction for these vehicles,
+                # from the number of lanes they load.
+                lane_factor = IRC6_2017.cl_205_lane_reduction_factor(
+                    sum(self._vehicle_lane_count(t) for t, _ in others))
 
                 for sign, label in ((1, "+300"), (-1, "-300")):
                     lc_name = f"SV-{sv_side[0].upper()} {label} | {other_side[0].upper()}: {summary}"
@@ -2339,12 +2434,10 @@ class BridgeGrillageModel:
                     sv.set_global_coord(og.Point(0.0, 0.0, sv_cw.center + sign * eccentricity_m))
                     lc.add_load(load=sv)
                     self.vehicle_type_map[id(sv)] = "SV"
-                    vehicles, count = [sv], {}
+                    vehicles = [sv]
 
                     for vehicle_type, z in others:
-                        i = count.get(vehicle_type, 0)
-                        count[vehicle_type] = i + 1
-                        lane_factor = alf[i] if i < len(alf) else 1.0
+                        dla = 1.0 + self._vehicle_impact_factor(vehicle_type)
                         v = og.create_load_model(model_type=vehicle_type.upper()).create()
                         v.set_global_coord(og.Point(0.0, 0.0, z))
                         lc.add_load(load=v, load_factor=lane_factor * dla)
@@ -2682,6 +2775,14 @@ class BridgeGrillageModel:
         for entry in target_lc_obj.load_groups:
             LL.add_load(entry["load"], load_factor=entry["factor"])
 
+        # Footway live load (Cl.206.1) goes with the carriageway LL so it takes
+        # the live-load factors of Tables B.2 / B.3. Factor 1.0: no impact on
+        # footway loading (Cl.208.4).
+        footpath_lc = getattr(self, "footpath_load_case", None)
+        if footpath_lc is not None:
+            for entry in footpath_lc.load_groups:
+                LL.add_load(entry["load"], load_factor=entry["factor"])
+
         model.add_load_case(LL, load_factor=partial_safety_factor)
         self.ll_load_case = LL
         self.governing_ll_name = str(governing_lc)
@@ -2940,15 +3041,16 @@ class BridgeGrillageModel:
             generated per event (no direction loop).
             Note: accidental event load cases have no model load case; silently omitted.
 
-        SEISMIC_1  … SEISMIC_4  (4 total)
+        SEISMIC_1  … SEISMIC_12  (12 total)
             2 permanent directions  ×  2 conditions (service γ=1.5, construction γ=0.75)
-            Adding    (DL=1.35, Surf=1.75): SEISMIC_1 service, SEISMIC_2 construction
-            Relieving  (DL=1.00, Surf=1.00): SEISMIC_3 service, SEISMIC_4 construction
+            ×  3 IRC 218.4(2) direction combinations (a), (b), (c)
+            Adding    (DL=1.35, Surf=1.75): SEISMIC_1–3 service, SEISMIC_4–6 construction
+            Relieving  (DL=1.00, Surf=1.00): SEISMIC_7–9 service, SEISMIC_10–12 construction
             Wind load accompanying = None for seismic → omitted.
-            EL term = ``seismic_load_case``, the vertical-dominant IRC 218.3
-            combination (c) set by ``create_seismic_load_cases()``.
+            EL term = ``seismic_combo_a`` / ``_b`` / ``_c`` set by
+            ``create_seismic_load_cases()``; the name ends in EL(a), EL(b) or EL(c).
 
-        Total: 13 ULS combinations when all are selected.
+        Total: 21 ULS combinations when all are selected.
 
         Parameters
         ----------
@@ -3007,7 +3109,8 @@ class BridgeGrillageModel:
         counters: dict = {}
         created: list = []
 
-        def _register(prefix, perm_factors, var_factors, seismic_factor=None, label="", key=""):
+        def _register(prefix, perm_factors, var_factors, seismic_factor=None, label="", key="",
+                      seismic_src=None, seismic_tag=""):
             # Skip combinations the user has de-selected. included_keys is None
             # → generate everything (back-compat); an empty/unknown key always
             # passes so a mapping miss can never silently drop a combination.
@@ -3043,11 +3146,12 @@ class BridgeGrillageModel:
                 to_copy.append((src, fac))
 
             if seismic_factor is not None and seismic_factor != 0:
-                src = _lc('seismic')
+                src = seismic_src if seismic_src is not None else _lc('seismic')
                 if src is None:
                     warnings.warn(f"{prefix}_{seq}: seismic load case not available.")
                 else:
-                    terms.append(f"{seismic_factor}{LOAD_ABBR['seismic']}")
+                    tag = f"({seismic_tag})" if seismic_tag else ""
+                    terms.append(f"{seismic_factor}{LOAD_ABBR['seismic']}{tag}")
                     to_copy.append((src, seismic_factor))
 
             if not to_copy:
@@ -3101,18 +3205,24 @@ class BridgeGrillageModel:
                           label=f"DL={dl_f}  {acc}(no lc)  {leading} leading",
                           key=IRC6_2017.ULS_COMBINATION_KEYS.get(('accidental', leading, acc, 'adding'), ""))
 
-        # ── SEISMIC (4 combos: 2 directions × 2 conditions) ──────────────────
+        # ── SEISMIC (12 combos: 2 directions × 2 conditions × 3 EQ combos) ───
         print("\nULS Seismic combinations:")
         var_seis = {vl: γ(vl, 'accompanying', 'seismic') for vl in VARIABLE_LOADS}
+        # IRC 6:2017 Cl.218.4(2) — every direction combination (a), (b), (c)
+        # is checked. Falls back to seismic_load_case if they were not built.
+        seis_dirs = [(tag, getattr(self, f"seismic_combo_{tag}", None)) for tag in ("a", "b", "c")]
+        seis_dirs = [(t, lc) for t, lc in seis_dirs if lc is not None] or [("", None)]
         for direction in DIRECTIONS:
             dl_f   = γ('dead_load', direction, 'seismic')
             surf_f = γ('surfacing',  direction, 'seismic')
             perm   = {'dead_load': dl_f, 'surfacing': surf_f}
             for condition in ['service', 'construction']:
                 el_f = γ('seismic', condition, 'seismic')
-                _register('SEISMIC', perm, var_seis, seismic_factor=el_f,
-                          label=f"DL={dl_f}({direction})  EL={el_f}({condition})",
-                          key=IRC6_2017.ULS_COMBINATION_KEYS.get(('seismic', condition, None, direction), ""))
+                for tag, src in seis_dirs:
+                    _register('SEISMIC', perm, var_seis, seismic_factor=el_f,
+                              seismic_src=src, seismic_tag=tag,
+                              label=f"DL={dl_f}({direction})  EL={el_f}({condition})  EQ ({tag})",
+                              key=IRC6_2017.ULS_COMBINATION_KEYS.get(('seismic', condition, None, direction), ""))
 
         print(f"\nTotal ULS combinations created: {len(created)}")
         self.uls_combinations = created

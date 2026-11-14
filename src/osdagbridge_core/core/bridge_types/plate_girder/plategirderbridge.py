@@ -47,6 +47,10 @@ from osdagbridge_core.core.utils.common import (
     KEY_INCLUDE_MEDIAN,
     KEY_FOOTPATH,
     KEY_LL_IRC_CLASS_SV,
+    KEY_LL_IRC_CLASS_A,
+    KEY_LL_IRC_CLASS_FATIGUE,
+    KEY_LL_IRC_70R_WHEELED,
+    KEY_LL_IRC_70R_TRACKED,
     KEY_BL_IRC_CLASS_SV,
     KEY_TS_FOOTPATH_WIDTH,
     KEY_RAILING_WIDTH,
@@ -1449,17 +1453,43 @@ class PlateGirderBridge:
         Must be called after setup_grillage() has built and registered the model.
         """
         model = self.grillage_model
-        model.add_vehicle_load_cases_from_combinations()
+
+        def _ticked(key):
+            # Missing key counts as ticked — matches defaults.py (both 70R
+            # boxes True) and the behaviour before the UI gate existed.
+            flag = self.input_dict.get(key, True)
+            return flag is True or str(flag).strip().lower() in ("1", "true", "yes", "checked")
+
+        # IRC:6 Table 6A Note (a) — Class 70R wheeled and/or tracked, per UI selection.
+        use_a = _ticked(KEY_LL_IRC_CLASS_A)
+        use_70r = _ticked(KEY_LL_IRC_70R_WHEELED) or _ticked(KEY_LL_IRC_70R_TRACKED)
+        if not use_a and use_70r:
+            bridge_logger.warning(
+                "Class A is not selected — IRC:6-2017 Cl.201.1: bridges designed for "
+                "Class 70R should be checked for Class A as well.")
+        elif not use_a and not use_70r:
+            bridge_logger.warning(
+                "No Class A or Class 70R vehicle selected — no carriageway live "
+                "load case is created.")
+        model.add_vehicle_load_cases_from_combinations(
+            include_70r_wheeled=_ticked(KEY_LL_IRC_70R_WHEELED),
+            include_70r_tracked=_ticked(KEY_LL_IRC_70R_TRACKED),
+            include_class_a=use_a,
+        )
         bridge_logger.check_cancel()
 
         model.create_moving_vehicle_load_cases()
         bridge_logger.check_cancel()
 
-        model.add_fatigue_vehicle_load_case()
-        bridge_logger.check_cancel()
+        # IRC:6 Cl.204.6 fatigue truck — only when "Class Fatigue" is ticked.
+        if _ticked(KEY_LL_IRC_CLASS_FATIGUE):
+            model.add_fatigue_vehicle_load_case()
+            bridge_logger.check_cancel()
 
-        model.create_moving_fatigue_load_cases()
-        bridge_logger.check_cancel()
+            model.create_moving_fatigue_load_cases()
+            bridge_logger.check_cancel()
+        else:
+            bridge_logger.info("Fatigue vehicle not included (Class Fatigue not ticked).")
 
         sv_flag = self.input_dict.get(KEY_LL_IRC_CLASS_SV)
         if sv_flag is True or str(sv_flag).strip().lower() in ("1", "true", "yes", "checked"):
@@ -2121,19 +2151,28 @@ class PlateGirderBridge:
         """
         return self.grillage_model.create_vehicle_load_cases()
 
-    def add_vehicle_load_cases_from_combinations(self) -> list:
+    def add_vehicle_load_cases_from_combinations(self, include_70r_wheeled: bool = True,
+                                                 include_70r_tracked: bool = True) -> list:
         """
         Create vehicle load cases with lane factors (alf) and dynamic load
         allowance (dla) applied, using IRC:6-2017 combinations.
 
         Delegates to BridgeGrillageModel.add_vehicle_load_cases_from_combinations().
 
+        Parameters
+        ----------
+        include_70r_wheeled, include_70r_tracked : bool
+            Which Class 70R combinations to build (Table 6A Note (a)).
+
         Returns
         -------
         list
             All created load case objects.
         """
-        return self.grillage_model.add_vehicle_load_cases_from_combinations()
+        return self.grillage_model.add_vehicle_load_cases_from_combinations(
+            include_70r_wheeled=include_70r_wheeled,
+            include_70r_tracked=include_70r_tracked,
+        )
 
     def create_moving_vehicle_load_cases(
         self,

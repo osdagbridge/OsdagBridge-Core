@@ -3227,10 +3227,10 @@ def _extract_demands_from_result_data(
     # Fatigue-vehicle cases (IRC:6 Cl.204.6) — the static "Fatigue" case plus every
     # increment of "Moving Fatigue ...". These drive the fatigue checks: the stress
     # range comes from the fatigue truck alone, not from the full Table 6A live-load
-    # cases. Falls back to the live-load cases when the model carries no fatigue
-    # truck (results produced before add_fatigue_vehicle_load_case() was wired in).
+    # cases. No fatigue truck (Class Fatigue unticked) -> range 0 -> checks 8/9
+    # are not added; the Table 6A vehicles are not the fatigue load model.
     _fatigue_lcs = list(lc_groups.get("fatigue", []))
-    _fatigue_range_lcs = _fatigue_lcs or all_live_lcs
+    _fatigue_range_lcs = _fatigue_lcs
     # DL+LL combination case from analyser's create_dl_ll_combination(), e.g. "1.0 DL + 1.0 LL".
     _dl_ll_lcs = list(lc_groups.get("dl_ll", []))
     # Analyser-provided pre-combined envelopes (single load case each).
