@@ -869,30 +869,40 @@ class IRC22_2014:
         Md_kNm,          # bending resistance from 603.3.3.1
         Mfd_kNm,         # plastic strength excluding shear area
         V_kN,            # factored shear force
-        Vd_kN            # design shear strength
+        Vd_kN,           # plastic shear resistance (Cl.603.3.3.2(1))
+        Vcr_kN=None      # shear buckling resistance (Cl.603.3.3.2(2)); governing = min(Vd, Vcr)
     ):
         """
         IRC:22-2014 Clause 603.3.3.3
         Reduction in bending resistance under high shear force
         (Ref: IS 800:2007, 9.2.2(a),(b))
+
+        Vd_governing = min(Vd_kN, Vcr_kN) when Vcr_kN is provided and positive.
+        For slender-web plate girders Vcr < Vd, so the buckling resistance governs
+        the 0.6·Vd threshold and the beta reduction formula.
         """
 
-        if Vd_kN <= 0:
+        # Governing shear capacity: smaller of plastic and buckling resistance.
+        Vd_governing = (min(Vd_kN, Vcr_kN) if (Vcr_kN is not None and Vcr_kN > 0)
+                        else Vd_kN)
+
+        if Vd_governing <= 0:
             raise ValueError("Vd_kN must be > 0")
 
         # No reduction condition
-        if V_kN <= 0.6 * Vd_kN:
+        if V_kN <= 0.6 * Vd_governing:
             return {
                 "Md_kNm": round(Md_kNm, 3),
                 "Mfd_kNm": round(Mfd_kNm, 3),
                 "Mdv_kNm": round(Md_kNm, 3),
                 "beta": 0.0,
                 "is_reduction_required": False,
+                "Vd_governing_kN": round(Vd_governing, 3),
                 "clause": "IRC 22:2014 - 603.3.3.3"
             }
 
         # Eq. 3.13
-        beta = (2 * V_kN / Vd_kN - 1) ** 2
+        beta = (2 * V_kN / Vd_governing - 1) ** 2
         beta = min(beta, 1.0)
 
         Mdv_kNm = Md_kNm - beta * (Md_kNm - Mfd_kNm)
@@ -903,6 +913,7 @@ class IRC22_2014:
             "Mdv_kNm": round(Mdv_kNm, 3),
             "beta": round(beta, 4),
             "is_reduction_required": True,
+            "Vd_governing_kN": round(Vd_governing, 3),
             "clause": "IRC 22:2014 - 603.3.3.3"
         }
 

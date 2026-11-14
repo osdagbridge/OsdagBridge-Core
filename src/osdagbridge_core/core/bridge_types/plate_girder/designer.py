@@ -2140,8 +2140,9 @@ class IRC22CapacityCalculator:
         results.details["buckling_resistance_stage1"] = ltb_s1
 
         # 6. Combined bending + shear
+        _Vd_governing = min(results.Vd_kN, results.Vcr_kN) if results.Vcr_kN > 0 else results.Vd_kN
         combined = self.compute_combined_bending_shear(
-            results.Md_kNm, Vu_kN, results.Vd_kN
+            results.Md_kNm, Vu_kN, _Vd_governing
         )
         results.Mdv_kNm = combined["Mdv_kNm"]
         results.beta_interaction = combined["beta"]
@@ -2470,27 +2471,20 @@ class DCREngine:
                          note=f"PNA in {c.pna_location}, xu={c.xu_mm:.1f} mm")
 
             # ── CATEGORY 2: Strength Limit State (Shear) ─────────────────────────
-        self._add_check(
-            2,
-            "ULS Shear",
-            "Cl.603.3.3.2",
-            d.Vu_kN,
-            c.Vd_kN,
-            "kN",
-            note=f"Av={c.Av_mm2:.0f} mm²",
-            governing_method=c.shear_method,
-        )
-
-        if c.Vcr_kN > 0:
+        _Vd_shear_check = min(c.Vd_kN, c.Vcr_kN) if c.Vcr_kN > 0 else c.Vd_kN
+        if c.Vcr_kN > 0 and c.Vcr_kN < c.Vd_kN:
             if c.shear_method == "tension_field":
-                _buck_note = (f"Tension field: Vtf={c.Vtf_kN:.1f} kN, φ={c.phi_tf_deg:.1f}°; "
-                              f"PC basis: Kv={c.Kv:.3f}, λw={c.lambda_w:.3f}, "
-                              f"τb={c.tau_b_buck_MPa:.1f} MPa")
+                _shear_note = (f"Vcr={c.Vcr_kN:.1f} kN governs (Vd={c.Vd_kN:.1f} kN plastic); "
+                               f"TF: Vtf={c.Vtf_kN:.1f} kN, φ={c.phi_tf_deg:.1f}°, "
+                               f"Kv={c.Kv:.3f}, λw={c.lambda_w:.3f}")
             else:
-                _buck_note = (f"Simple post-critical: Kv={c.Kv:.3f}, "
-                              f"λw={c.lambda_w:.3f}, τb={c.tau_b_buck_MPa:.1f} MPa")
-            self._add_check(2, "ULS Shear Buckling", "Cl.603.3.3.2",
-                             d.Vu_kN, c.Vcr_kN, "kN", note=_buck_note)
+                _shear_note = (f"Vcr={c.Vcr_kN:.1f} kN governs (Vd={c.Vd_kN:.1f} kN plastic); "
+                               f"Kv={c.Kv:.3f}, λw={c.lambda_w:.3f}, τb={c.tau_b_buck_MPa:.1f} MPa")
+        else:
+            _shear_note = f"Vd={c.Vd_kN:.1f} kN plastic governs; Av={c.Av_mm2:.0f} mm²"
+        self._add_check(2, "ULS Shear", "Cl.603.3.3.2",
+                        d.Vu_kN, _Vd_shear_check, "kN",
+                        note=_shear_note, governing_method=c.shear_method)
 
         # ── CATEGORY 3: Interaction ───────────────────────────────────────────
         # 3a. Moment–Shear interaction (Cl.603.3.3.3)
