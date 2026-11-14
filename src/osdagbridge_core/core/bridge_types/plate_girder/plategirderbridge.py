@@ -1048,6 +1048,7 @@ class PlateGirderBridge:
     def generate_design_report(self, request, cad_generator, is_preview=False):
         """Compile the final PDF design report."""
         from osdagbridge_core.core.reports.report_generator import build_report_payload, generate_report
+        from osdagbridge_core.core.reports.report_utils import get_girder_report_details
 
         report_inputs = self.input_dict.copy()
         output_dict   = dict(self.output_dict)  # MappingProxyType → dict
@@ -1062,6 +1063,7 @@ class PlateGirderBridge:
             }
 
         payload = build_report_payload(request, report_inputs, output_dict)
+        payload.girder_report_details = get_girder_report_details(self)
 
         # Collect figure bytes into payload.figure_data — no disk writes here
         figure_data = {}

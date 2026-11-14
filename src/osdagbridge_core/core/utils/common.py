@@ -1938,3 +1938,6 @@ def get_channel_section_list() -> list[str]:
         return designations
     except sqlite3.Error:
         return []
+CHECK_NAME_ULS_SHEAR = "ULS Shear"
+CHECK_NAME_ULS_SHEAR_BUCKLING = "ULS Shear Buckling"
+CHECK_NAME_LTB_CONSTRUCTION = "LTB (Construction Stage)"

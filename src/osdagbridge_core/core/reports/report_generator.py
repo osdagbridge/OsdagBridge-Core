@@ -431,6 +431,7 @@ class ReportPayload:
     figures:          ReportFigures
     log_entries:      List[str] = field(default_factory=list)
     output_dict:      dict = field(default_factory=dict)
+    girder_report_details: dict = field(default_factory=dict)
     figure_data:      dict = field(default_factory=dict)  # {attr: bytes} — cleared after writing to tmpdir
 
 
@@ -915,7 +916,9 @@ def generate_report(payload, request):
                 if 'analysis' in secs:
                     doc_parts.append(ch4_analysis(payload.analysis_summary, fig_paths, bridge))
                 if 'design_checks' in secs:
-                    doc_parts.append(ch5_design_checks(payload.design_checks, bridge, ur_chart_paths))
+                    doc_parts.append(ch5_design_checks(
+                        payload.design_checks, bridge, ur_chart_paths, payload.girder_report_details,
+                    ))
                 if 'drawings' in secs and payload.options.include_figures:
                     doc_parts.append(ch6_drawings(fig_paths))
 

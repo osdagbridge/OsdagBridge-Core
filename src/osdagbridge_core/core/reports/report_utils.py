@@ -5,15 +5,275 @@ import matplotlib
 matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt
 
-from osdagbridge_core.core.utils.common import (
+from osdagbridge_core.utils.common import (
+    KEY_SD_CLASS_FLANGE,
+    KEY_SD_CLASS_WEB,
+    KEY_SD_FLANGE_CLASS_LIMIT,
+    KEY_SD_FLANGE_SLENDERNESS,
+    KEY_SD_WEB_CLASS_LIMIT,
+    KEY_SD_WEB_SLENDERNESS,
+    KEY_SD_SECTION_PROP_IV,
+    KEY_SD_SECTION_PROP_IT,
+    KEY_SD_SECTION_PROP_IW,
+    KEY_SD_LTB_MP,
+    KEY_SD_LTB_MCR,
+    KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,
+    KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,
+    KEY_MP_GIRDER_SECTIONAL_AREA,
+    KEY_MP_GIRDER_SECTIONAL_IZ,
+    KEY_SD_COMPOSITE_IZ,
+    KEY_SD_PNA_DEPTH,
+    KEY_SD_SECTION_PROP_AREA,
+    KEY_SD_SECTION_PROP_IZ,
+    KEY_SD_SECTION_PROP_ZUZ,
+    KEY_SD_SECTION_PROP_ZZ,
+    CHECK_NAME_LTB_CONSTRUCTION,
+    CHECK_NAME_ULS_SHEAR,
+    CHECK_NAME_ULS_SHEAR_BUCKLING,
     KEY_BOQ_END_DIAPHRAGM_WEIGHT_T,
     KEY_MP_GD_MEMBER_ID,
     KEY_MP_GD_SELECT_GIRDER,
+    KEY_SD_LTB_CHI,
+    KEY_SD_LTB_LAMBDA,
+    KEY_SD_LTB_LLT,
+    KEY_SD_IS_IYS_MIN,
+    KEY_SD_IS_IYS_PROV,
+    KEY_SD_IS_FQ,
+    KEY_SD_IS_FQD,
+    KEY_SD_BS_R,
+    KEY_SD_BS_FCDW_WB,
+    KEY_SD_BS_FCDW_LC,
+    KEY_SD_BS_FPSD,
+    KEY_SD_BS_FCD,
+    KEY_SD_SHEAR_AV,
+    KEY_SD_SHEAR_KV,
+    KEY_SD_SHEAR_LAMBDA_W,
+    KEY_SD_SHEAR_TAU_B,
+    KEY_SD_PANEL_CD,
+    KEY_SD_HIGH_SHEAR,
+    KEY_SD_MN_AXIAL,
+    KEY_SD_MN_MOMENT,
     KEY_TS_NO_OF_GIRDERS,
 )
 
 _GROUPED_TABLE_PROBE = False
 _GROUPED_TABLE_BREAKS = set()
+
+# Several stiffener checks share IDs 20 or 21; the engine label identifies the row.
+_STIFFENER_CHECK_FIELDS = (
+    (20, "Int.Stiff: Iys \u2265 Iys_min", KEY_SD_IS_IYS_MIN, KEY_SD_IS_IYS_PROV),
+    (20, "Int.Stiff: Buckling Fqd\u2265Fq", KEY_SD_IS_FQ, KEY_SD_IS_FQD),
+    (21, "Brg.Stiff: Web Check (unstiffened web)", KEY_SD_BS_R, KEY_SD_BS_FCDW_WB),
+    (21, "Brg.Stiff: Web Local Capacity", KEY_SD_BS_R, KEY_SD_BS_FCDW_LC),
+    (21, "Brg.Stiff: Bearing Check", KEY_SD_BS_R, KEY_SD_BS_FPSD),
+    (21, "Brg.Stiff: Buckling Check", KEY_SD_BS_R, KEY_SD_BS_FCD),
+)
+
+
+def _governing_check(record, check_id, label=None):
+    """Pick the governing saved check for Tables 5.1, 5.2, 5.4-5.6, 5.8-5.9 and 5.11."""
+    # Match by name when several checks share the same ID.
+    # The engine uses distinct labels for shear buckling and plastic shear under ID 2.
+    labels = (label, CHECK_NAME_ULS_SHEAR) if check_id == 2 and label == CHECK_NAME_ULS_SHEAR_BUCKLING else (label,)
+    for name in labels:
+        candidates = [(case, check) for case, data in (record.get("per_lc") or {}).items()
+                      for check in data.get("checks", [])]
+        candidates += [(None, check) for check in record.get("checks") or []]
+        matches = [(case, check) for case, check in candidates
+                   if check.get("check_id", check.get("id")) == check_id
+                   and (name is None or check.get("name", check.get("label")) == name)]
+        for source in ([item for item in matches if item[0] is not None],
+                       [item for item in matches if item[0] is None]):
+            if source:
+                return max(source, key=lambda item: item[1].get("dcr") or 0)
+    return None, None
+
+
+def _stored_shear_details(record, buckling_check):
+    """Read shear details for Table 5.4 that are saved only in the check notes."""
+    _, shear_check = _governing_check(record, 2, CHECK_NAME_ULS_SHEAR)
+    values = {}
+    notes = [(KEY_SD_SHEAR_AV, "Av", (shear_check or {}).get("note") or "")]
+    if buckling_check.get("name", buckling_check.get("label")) == CHECK_NAME_ULS_SHEAR_BUCKLING:
+        note = buckling_check.get("note") or ""
+        notes.extend((key, label, note) for key, label in (
+            (KEY_SD_SHEAR_KV, "Kv"),
+            (KEY_SD_SHEAR_LAMBDA_W, "\u03bbw"),
+            (KEY_SD_SHEAR_TAU_B, "\u03c4b"),
+        ))
+    for key, label, note in notes:
+        match = re.search(r"\b" + re.escape(label) + r"=([0-9]+(?:\.[0-9]+)?)(?![\d.])", note)
+        if match:
+            values[key] = float(match[1])
+    return values
+
+
+def stored_classification_details(design_results, girder):
+    """Read saved classification for Table 5.2 only for the girder it describes."""
+    if girder != design_results.get("controlling_girder"):
+        return {}
+    return _classification_fields(design_results.get("capacity_details") or {})
+
+
+def _classification_fields(capacity_details):
+    """Map saved flange and web classification fields to Table 5.2 keys."""
+    classification = capacity_details.get("section_class") or {}
+    return {key: classification[field] for key, field in (
+        (KEY_SD_FLANGE_SLENDERNESS, "b_tf_ratio"),
+        (KEY_SD_WEB_SLENDERNESS, "d_tw_ratio"),
+        (KEY_SD_FLANGE_CLASS_LIMIT, "flange_limit"),
+        (KEY_SD_WEB_CLASS_LIMIT, "web_limit"),
+        (KEY_SD_CLASS_FLANGE, "flange_class"),
+        (KEY_SD_CLASS_WEB, "web_class"),
+    ) if classification.get(field) is not None}
+
+
+def stored_ltb_properties(design_results, girder):
+    """Read saved stage 2 LTB properties for the controlling girder in Table 5.6."""
+    if girder != design_results.get("controlling_girder"):
+        return {}
+    return _stage2_ltb_fields(design_results.get("capacity_details") or {})
+
+
+def _stage2_ltb_fields(capacity_details):
+    """Map stage 2 LTB properties to Table 5.6 keys and convert units."""
+    details = capacity_details.get("buckling_resistance") or {}
+    return {key: details[field] * scale for key, field, scale in (
+        (KEY_SD_SECTION_PROP_IV, "Iy_mm4", 1e-12),
+        (KEY_SD_SECTION_PROP_IT, "It_mm4", 1e-12),
+        (KEY_SD_SECTION_PROP_IW, "Iw_mm6", 1e-18),
+        (KEY_SD_LTB_MP, "Mpl_kNm", 1),
+        (KEY_SD_LTB_MCR, "Mcr_kNm", 1),
+    ) if details.get(field) is not None}
+
+
+def _stored_ltb_details(check):
+    """Read construction-stage LTB values saved only in the note for Table 5.6."""
+    if check.get("name", check.get("label")) != CHECK_NAME_LTB_CONSTRUCTION:
+        return {}
+    note = check.get("note") or ""
+    values = {}
+    for key, label in (
+        (KEY_SD_LTB_LLT, "LLT=cb_spacing"),
+        (KEY_SD_LTB_LAMBDA, "\u03bb_LT"),
+        (KEY_SD_LTB_CHI, "\u03c7_LT"),
+    ):
+        match = re.search(re.escape(label) + r"=([0-9]+(?:\.[0-9]+)?)(?![\d.])", note)
+        if match:
+            values[key] = float(match[1])
+    return values
+
+
+def _check_values(check, fields):
+    """Copy saved demand and capacity into the required and provided columns of Tables 5.8 and 5.9."""
+    return {key: check.get(field) for key, field in zip(fields, ("demand", "capacity")) if key is not None}
+
+
+def _stored_stiffener_values(record):
+    """Find each girder's saved stiffener checks for Tables 5.8 and 5.9."""
+    values = {}
+    for check_id, label, demand_key, capacity_key in _STIFFENER_CHECK_FIELDS:
+        _, check = _governing_check(record, check_id, label)
+        if check is not None:
+            values.update(_check_values(check, (demand_key, capacity_key)))
+    return values
+
+
+def get_girder_report_details(backend):
+    """Fetch missing details for Tables 5.2, 5.4-5.6 and 5.8 from the existing engine."""
+    # Pass these details through the report payload so output_dict stays unchanged.
+    results = {}
+    design_results = backend.output_dict.get("design_results") or {}
+    records = design_results.get("per_girder") or {}
+    for girder, record in records.items():
+        cases = record.get("per_lc") or {}
+        capacities = {}
+        values = results[girder] = {}
+
+        def capacity_for(case):
+            """Reuse a girder's capacity for the same load case across these tables."""
+            if case not in cases:
+                return None
+            if case not in capacities:
+                engine = backend.get_dcr_engine_for_selection(girder, case)
+                capacities[case] = engine.capacity if engine is not None else None
+            return capacities[case]
+
+        if girder != design_results.get("controlling_girder"):
+            case, _ = _governing_check(record, 5, CHECK_NAME_LTB_CONSTRUCTION)
+            capacity = capacity_for(case)
+            if capacity is not None:
+                values.update(_classification_fields(capacity.details))
+                values.update(_stage2_ltb_fields(capacity.details))
+
+        case, shear = _governing_check(record, 2, CHECK_NAME_ULS_SHEAR_BUCKLING)
+        if shear and shear.get("name", shear.get("label")) == CHECK_NAME_ULS_SHEAR_BUCKLING:
+            capacity = capacity_for(case)
+            if capacity is not None:
+                panel = (capacity.details.get("shear_buckling") or {}).get("c_mm")
+                depth = (record.get("section") or {}).get("dw_mm")
+                if panel and depth and panel > 0 and depth > 0:
+                    values[KEY_SD_PANEL_CD] = round(panel / depth, 3)
+
+        for check_id in (3, 4):
+            case, check = _governing_check(record, check_id)
+            capacity = capacity_for(case) if check else None
+            if capacity is None:
+                continue
+            if check_id == 3:
+                values[KEY_SD_HIGH_SHEAR] = "Yes" if capacity.beta_interaction > 0 else "No"
+            elif cases[case].get("Nu_kN", 0) > 0:
+                values[KEY_SD_MN_AXIAL] = capacity.mn_axial_term
+                values[KEY_SD_MN_MOMENT] = capacity.mn_moment_term
+
+        # Prefer a saved verification pair; otherwise inspect the girder's ULS envelope.
+        saved = _stored_stiffener_values(record)
+        if saved.get(KEY_SD_IS_FQ) is None or saved.get(KEY_SD_IS_FQD) is None:
+            demand = record.get("demand") or {}
+            capacity = capacity_for(demand.get("governing_combination"))
+            detail = (capacity.details.get("intermediate_stiffener") or {}) if capacity is not None else {}
+            if detail and not (detail.get("skipped") or detail.get("design_guidance")):
+                if detail.get("Fq_kN") is not None and detail.get("Fqd_kN") is not None:
+                    values[KEY_SD_IS_FQ] = detail["Fq_kN"]
+                    values[KEY_SD_IS_FQD] = detail["Fqd_kN"]
+    return results
+
+
+def iter_girder_outputs(output_dict, girder_entries):
+    """Give Tables 5.1, 5.2 and 5.4-5.9 one saved output dictionary per girder."""
+    for index, (label, _) in enumerate(girder_entries, start=1):
+        name, suffix = f"G{index}", f".G{index}.M1"
+        values = {key[:-len(suffix)]: value for key, value in output_dict.items()
+                  if isinstance(key, str) and key.endswith(suffix)}
+        values.update(output_dict.get("girder_outputs", {}).get(name) or {})
+        yield label, dict(values, _report_girder=name)
+
+
+def iter_girder_section_outputs(output_dict, girder_entries):
+    """Read saved section properties and convert them to Table 5.1 display units."""
+    records = (output_dict.get("design_results") or {}).get("per_girder") or {}
+    member_fields = (
+        (KEY_SD_SECTION_PROP_AREA, KEY_MP_GIRDER_SECTIONAL_AREA, 1e4),
+        (KEY_SD_SECTION_PROP_IZ, KEY_MP_GIRDER_SECTIONAL_IZ, 1e8),
+        (KEY_SD_SECTION_PROP_ZZ, KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ, 1e6),
+        (KEY_SD_SECTION_PROP_ZUZ, KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ, 1e6),
+    )
+    for label, values in iter_girder_outputs(output_dict, girder_entries):
+        for target, source, scale in member_fields:
+            value = values.get(source)
+            if target not in values and value not in (None, ""):
+                values[target] = round(float(value) * scale, 2)
+        record = records.get(values["_report_girder"]) or {}
+        inertia = (record.get("sls_fibre_stresses") or {}).get("I_comp_mm4")
+        if inertia is not None:
+            values.setdefault(KEY_SD_COMPOSITE_IZ, round(float(inertia) / 1e4, 2))
+        _, flexure = _governing_check(record, 1, "ULS Flexure")
+        # The saved flexure note holds the PNA depth at the report precision.
+        note = (flexure or {}).get("note") or ""
+        match = re.search(r"\bxu=([0-9]+(?:\.[0-9]+)?)\s*mm\b", note)
+        if match:
+            values.setdefault(KEY_SD_PNA_DEPTH, float(match[1]))
+        yield label, values
 
 
 def configure_grouped_table_breaks(probe=False, breaks=None):
@@ -48,7 +308,7 @@ def _tex(value):
 def _render_value(source_dict, key, unit=""):
     val = source_dict.get(key)
     if val in ("", None):
-        return ""
+        return "Not available" if source_dict.get("_report_girder") else ""
     if isinstance(val, float):
         val = f"{val:.2f}".rstrip("0").rstrip(".")
     return _tex(val) + unit
