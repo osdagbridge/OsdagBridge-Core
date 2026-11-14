@@ -301,8 +301,8 @@ class BridgeInputValidator:
             v = self._to_float(inputs.get(key))
             overall = self._to_float(inputs.get(KEY_TS_OVERALL_WIDTH))
             max_rlw = (overall / 2) if overall else None
-            if v is None: return 0.0, "Railing width must be a numeric value."
-            if v < 0.0:   return 0.0, "Railing width is outside the practical range allowed in the software."
+            if v is None:             return MIN_RAILING_WIDTH, "Railing width must be a numeric value."
+            if v < MIN_RAILING_WIDTH: return MIN_RAILING_WIDTH, f"Minimum railing width allowed is {MIN_RAILING_WIDTH} m (practical limitations)."
             if max_rlw is not None and v > max_rlw:
                 return max_rlw, "Railing width is outside the practical range allowed in the software."
 
