@@ -915,6 +915,15 @@ class PatchLoading(Loads):
         # procedure to define lines of patch
         self._define_patch_edge_lines()
 
+    def move_load(self, ref_point: Point):
+        """
+        Move the patch by ``ref_point``, then rebuild its edge lines and
+        magnitude interpolator at the new position — both are built from the
+        vertices in ``__init__`` and would otherwise stay at the old position.
+        """
+        super().move_load(ref_point)
+        self._define_patch_edge_lines()
+
     def _define_patch_edge_lines(self):
         # create each line
         self.line_1 = LineLoading(point1=self.load_point_1, point2=self.load_point_2)
@@ -1598,6 +1607,8 @@ class LoadModel:
             return self.create_classA_vehicle()
         elif self.model_type == "CLASS70R":
             return self.create_class70r_vehicle()
+        elif self.model_type == "CLASS70RT":
+            return self.create_class70r_tracked_vehicle()
         elif self.model_type == "FATIGUE":
             return self.create_fatigue_vehicle()
         elif self.model_type == "SV":
@@ -1720,6 +1731,55 @@ class LoadModel:
                 Class70R_vehicle.add_load(load=point)
 
         return Class70R_vehicle
+
+    def create_class70r_tracked_vehicle(self):
+        """
+        IRC Class 70R tracked vehicle (Clause 204.1, Fig. 1)
+        70 t on two tracks of 35 t, each 4.57 m long and 0.84 m wide,
+        2.90 m over the tracks (track centrelines at -1.03 / +1.03 m).
+        Each track is a uniform patch load.
+        Returns a CompoundLoad in local coordinates
+        """
+
+        # Units
+        m = 1
+        kN = 1e3
+        g = 9.81  # m/s^2
+
+        # Geometry
+        track_length = 4.570 * m
+        track_width = 0.840 * m
+        track_load = 35 * kN * g  # 35 t per track (N)
+
+        # Uniform contact pressure of one track (N/m^2)
+        track_pressure = track_load / (track_length * track_width)
+
+        # Longitudinal extent of the tracks
+        x_start = 0.0 + self.x_offset
+        x_end = track_length + self.x_offset
+
+        # Track centrelines
+        load_positions_z = [-1.03, 1.03]
+        load_positions_z = [z + self.z_offset for z in load_positions_z]
+
+        # Create compound load
+        Class70RT_vehicle = create_compound_load(name="Class 70R Tracked Vehicle")
+
+        # Create one patch load per track (vertices counter-clockwise)
+        for z in load_positions_z:
+            z_lo = z - track_width / 2
+            z_hi = z + track_width / 2
+            patch = create_load(
+                loadtype="patch",
+                name="Class70R track",
+                point1=create_load_vertex(x=x_start, z=z_lo, p=track_pressure),
+                point2=create_load_vertex(x=x_end, z=z_lo, p=track_pressure),
+                point3=create_load_vertex(x=x_end, z=z_hi, p=track_pressure),
+                point4=create_load_vertex(x=x_start, z=z_hi, p=track_pressure),
+            )
+            Class70RT_vehicle.add_load(load=patch)
+
+        return Class70RT_vehicle
 
     def create_classA_vehicle(self):
         """

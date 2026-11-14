@@ -1075,6 +1075,10 @@ class BridgeGrillageModel:
                 return float(sum(IRC6_2017.cl_204_1_ClassA_vehicle()['wheel_loads'])) / kN
             elif vehicle_type == 'Class70R':
                 return float(sum(IRC6_2017.cl_204_1_Class70R_vehicle_wheel()['wheel_loads'])) / kN
+            elif vehicle_type == 'Class70RT':
+                # Two tracks, each a uniform load over the 4.57 m contact length.
+                d = IRC6_2017.cl_204_1_Class70R_vehicle_track()
+                return float(len(d['z']) * d['wheel_loads_udl'] * (d['x'][1] - d['x'][0])) / kN
             elif vehicle_type == 'SV':
                 return float(IRC6_2017.cl_204_5_1_special_vehicle()['total_load_kN'])
         except Exception:
@@ -1719,22 +1723,28 @@ class BridgeGrillageModel:
     #   Live Load
     # ============================================================
 
-    def vehicle_lane_coordinates(self):
+    def vehicle_lane_coordinates(self, include_70r_wheeled=True, include_70r_tracked=True):
         """
         Calculates vehicle-to-coordinate mappings for all combinations
         as per IRC:6-2017 Table 6 and Table 6A.
 
         Returns vehicle placement for each case where:
         - ClassA occupies 1 lane
-        - Class70R occupies 2 lanes
+        - Class70R (wheeled) / Class70RT (tracked) occupies 2 lanes
+
+        Per Table 6A Note (a), every combination carrying Class 70R wheeled is
+        repeated with Class 70R tracked in the same position. Cases are
+        numbered 1..n: wheeled/Class A cases first, then the tracked ones.
 
         z -> transverse direction
         x -> longitudinal direction
 
         Parameters
         ----------
-        carriageway_width : float, optional
-            Carriageway width in metres. If omitted, reads from self.layout.
+        include_70r_wheeled : bool
+            Keep the combinations carrying Class 70R wheeled (default True).
+        include_70r_tracked : bool
+            Add the Class 70R tracked combinations (default True).
 
         Returns
         -------
@@ -1841,6 +1851,26 @@ class BridgeGrillageModel:
 
             result_cases.append(case_data)
 
+        # IRC 6:2017 Table 6A Note (a) — Class 70R wheeled may be replaced by
+        # Class 70R tracked: repeat each 70R combination with the tracked
+        # vehicle at the same positions.
+        base_cases, tracked_cases = [], []
+        for case in result_cases:
+            combos = case['combinations']
+            if 'Class70R' in combos:
+                if include_70r_tracked:
+                    tracked_cases.append({'combinations': {
+                        ('Class70RT' if k == 'Class70R' else k): v
+                        for k, v in combos.items()
+                    }})
+                if not include_70r_wheeled:
+                    continue
+            base_cases.append(case)
+
+        result_cases = base_cases + tracked_cases
+        for n, case in enumerate(result_cases, start=1):
+            case['case_num'] = n
+
         # print(f"Vehicle lane coordinate cases: {result_cases}")
         return result_cases
 
@@ -1891,26 +1921,42 @@ class BridgeGrillageModel:
 
         return all_vehicle_load_cases
 
-    def add_vehicle_load_cases_from_combinations(self, model=None):
+    def _vehicle_impact_factor(self, vehicle_type):
+        """
+        IRC 6:2017 impact factor (IM) for one vehicle on this steel span:
+        Class A from Cl.208.2, Class 70R wheeled and tracked from Cl.208.3.
+        """
+        if vehicle_type == "ClassA":
+            return IRC6_2017.cl_208_2_impact_factor(self.L)
+        if vehicle_type == "Class70R":
+            return IRC6_2017.cl_208_3_impact_factor(self.L, KEY_VEHICLE[0])
+        if vehicle_type == "Class70RT":
+            return IRC6_2017.cl_208_3_impact_factor(self.L, KEY_VEHICLE[1])
+        raise ValueError(f"No impact factor defined for vehicle type {vehicle_type!r}")
+
+    def add_vehicle_load_cases_from_combinations(self, model=None,
+                                                 include_70r_wheeled=True,
+                                                 include_70r_tracked=True):
         """
         Create vehicle load cases using coordinates from vehicle_lane_coordinates().
 
         - Creates empty moving load list
         - Uses global coordinates from vehicle combinations
         - Applies lane factors (alf)
-        - Applies dynamic load allowance (dla)
+        - Applies dynamic load allowance (dla) per vehicle, stored in the load
+          case's load_groups so the governing LL case and combinations keep it
+        - include_70r_wheeled / include_70r_tracked select which Class 70R
+          combinations are built (UI vehicle selection)
         """
 
         model = model or self.model
         if model is None:
             raise ValueError("Model not created yet.")
 
-        vehicle_cases = self.vehicle_lane_coordinates()
+        vehicle_cases = self.vehicle_lane_coordinates(include_70r_wheeled, include_70r_tracked)
 
         # IRC 6:2017 Cl.204.4 Table 6A — multi-lane live-load reduction factors (keyfile.LANE_REDUCTION_FACTORS).
         alf = list(LANE_REDUCTION_FACTORS)
-        # IRC 6:2017 Cl.208.3 — dynamic load allowance computed from actual span.
-        dla = 1.0 + IRC6_2017.cl_208_3_impact_factor(self.L)
         # -------------------------------------------------
         # Reset stores
         # -------------------------------------------------
@@ -1932,6 +1978,8 @@ class BridgeGrillageModel:
             self.vehicle_moving_loads_by_case[case_num] = []
 
             for vehicle_type, coord_list in combinations.items():
+                # IRC 6:2017 Cl.208.2 / 208.3 — impact factor for this vehicle type.
+                dla = 1.0 + self._vehicle_impact_factor(vehicle_type)
                 for i, (x_coord, z_coord) in enumerate(coord_list):
 
                     # Lane factor resets per vehicle type (alf indexed within coord_list)
@@ -1943,12 +1991,12 @@ class BridgeGrillageModel:
                     vehicle = vehicle_generator.create()
                     vehicle.set_global_coord(og.Point(x_coord, 0.0, z_coord))
 
-                    lc.add_load(load=vehicle, load_factor=lane_factor)
+                    lc.add_load(load=vehicle, load_factor=lane_factor * dla)
 
                     self.vehicle_moving_loads_by_case[case_num].append(vehicle)
                     self.vehicle_type_map[id(vehicle)] = vehicle_type
 
-            model.add_load_case(lc, load_factor=dla)
+            model.add_load_case(lc, load_factor=1.0)
             self.vehicle_load_cases_list.append(lc)
 
         # Flat list kept for backward-compat guard checks
@@ -1964,13 +2012,15 @@ class BridgeGrillageModel:
         Return the full axle-span length (m) for a vehicle type by reading the
         last axle position from the IRC6_2017 local geometry.
 
-        Class70R last axle ≈ 15.12 m, ClassA last axle ≈ 20.30 m,
-        SV last axle ≈ 38.46 m.
+        Class70R last axle ≈ 15.12 m, Class70RT track length 4.57 m,
+        ClassA last axle ≈ 20.30 m, SV last axle ≈ 38.46 m.
         Falls back to 25.0 m for unknown types.
         """
         try:
             if vehicle_type == 'Class70R':
                 data = IRC6_2017.cl_204_1_Class70R_vehicle_wheel()
+            elif vehicle_type == 'Class70RT':
+                data = IRC6_2017.cl_204_1_Class70R_vehicle_track()
             elif vehicle_type == 'ClassA':
                 data = IRC6_2017.cl_204_1_ClassA_vehicle()
             elif vehicle_type == 'SV':
@@ -2101,8 +2151,8 @@ class BridgeGrillageModel:
         model : Grillage, optional
             Target model; defaults to ``self.model``.
         apply_dla : bool
-            Apply the Cl.208.3 dynamic load allowance as the load-case factor
-            (default True).
+            Apply the Cl.204.6 impact allowance (50% of the Cl.208.2 impact
+            factor) as the load-case factor (default True).
 
         Returns
         -------
@@ -2113,8 +2163,10 @@ class BridgeGrillageModel:
         if model is None:
             raise ValueError("Model not created yet.")
 
-        # IRC 6:2017 Cl.208.3 — dynamic load allowance computed from actual span.
-        dla = 1.0 + IRC6_2017.cl_208_3_impact_factor(self.L) if apply_dla else 1.0
+        # IRC 6:2017 Cl.204.6 — 50% of the Cl.208.2 impact factor for the fatigue truck.
+        dla = 1.0 + 0.5 * IRC6_2017.cl_208_2_impact_factor(self.L) if apply_dla else 1.0
+        # Remembered so the moving fatigue case uses the same factor.
+        self.fatigue_dla = dla
 
         self.fatigue_load_cases_list = []
         self.fatigue_vehicles_by_case = {}
@@ -2194,7 +2246,8 @@ class BridgeGrillageModel:
             for vehicle in vehicles:
                 moving_load.add_load(vehicle)
 
-            model.add_load_case(moving_load)
+            # IRC 6:2017 Cl.204.6 — same impact allowance as the static fatigue case.
+            model.add_load_case(moving_load, load_factor=getattr(self, "fatigue_dla", 1.0))
             self.moving_fatigue_load_cases_list.append(moving_load)
 
         return self.moving_fatigue_load_cases_list
@@ -2307,10 +2360,9 @@ class BridgeGrillageModel:
             return self.sv_load_cases_list
 
         eccentricity_m = abs(placement["eccentricity_mm"]) / 1000.0
-        # IRC 6:2017 Table 6A lane reduction and Cl.208.3 impact, for the
+        # IRC 6:2017 Table 6A lane reduction and Cl.208.2 / 208.3 impact, for the
         # non-SV carriageway only — same factors as the Table 6A vehicle cases.
         alf = list(LANE_REDUCTION_FACTORS)
-        dla = 1.0 + IRC6_2017.cl_208_3_impact_factor(self.L)
 
         for sv_side, other_side in (("left", "right"), ("right", "left")):
             sv_cw, other_cw = cws[sv_side], cws[other_side]
@@ -2345,6 +2397,7 @@ class BridgeGrillageModel:
                         i = count.get(vehicle_type, 0)
                         count[vehicle_type] = i + 1
                         lane_factor = alf[i] if i < len(alf) else 1.0
+                        dla = 1.0 + self._vehicle_impact_factor(vehicle_type)
                         v = og.create_load_model(model_type=vehicle_type.upper()).create()
                         v.set_global_coord(og.Point(0.0, 0.0, z))
                         lc.add_load(load=v, load_factor=lane_factor * dla)

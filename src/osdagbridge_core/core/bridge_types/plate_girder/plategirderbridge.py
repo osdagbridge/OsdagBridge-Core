@@ -47,6 +47,8 @@ from osdagbridge_core.core.utils.common import (
     KEY_INCLUDE_MEDIAN,
     KEY_FOOTPATH,
     KEY_LL_IRC_CLASS_SV,
+    KEY_LL_IRC_70R_WHEELED,
+    KEY_LL_IRC_70R_TRACKED,
     KEY_BL_IRC_CLASS_SV,
     KEY_TS_FOOTPATH_WIDTH,
     KEY_RAILING_WIDTH,
@@ -1449,7 +1451,18 @@ class PlateGirderBridge:
         Must be called after setup_grillage() has built and registered the model.
         """
         model = self.grillage_model
-        model.add_vehicle_load_cases_from_combinations()
+
+        def _ticked(key):
+            # Missing key counts as ticked — matches defaults.py (both 70R
+            # boxes True) and the behaviour before the UI gate existed.
+            flag = self.input_dict.get(key, True)
+            return flag is True or str(flag).strip().lower() in ("1", "true", "yes", "checked")
+
+        # IRC:6 Table 6A Note (a) — Class 70R wheeled and/or tracked, per UI selection.
+        model.add_vehicle_load_cases_from_combinations(
+            include_70r_wheeled=_ticked(KEY_LL_IRC_70R_WHEELED),
+            include_70r_tracked=_ticked(KEY_LL_IRC_70R_TRACKED),
+        )
         bridge_logger.check_cancel()
 
         model.create_moving_vehicle_load_cases()
@@ -2121,19 +2134,28 @@ class PlateGirderBridge:
         """
         return self.grillage_model.create_vehicle_load_cases()
 
-    def add_vehicle_load_cases_from_combinations(self) -> list:
+    def add_vehicle_load_cases_from_combinations(self, include_70r_wheeled: bool = True,
+                                                 include_70r_tracked: bool = True) -> list:
         """
         Create vehicle load cases with lane factors (alf) and dynamic load
         allowance (dla) applied, using IRC:6-2017 combinations.
 
         Delegates to BridgeGrillageModel.add_vehicle_load_cases_from_combinations().
 
+        Parameters
+        ----------
+        include_70r_wheeled, include_70r_tracked : bool
+            Which Class 70R combinations to build (Table 6A Note (a)).
+
         Returns
         -------
         list
             All created load case objects.
         """
-        return self.grillage_model.add_vehicle_load_cases_from_combinations()
+        return self.grillage_model.add_vehicle_load_cases_from_combinations(
+            include_70r_wheeled=include_70r_wheeled,
+            include_70r_tracked=include_70r_tracked,
+        )
 
     def create_moving_vehicle_load_cases(
         self,
