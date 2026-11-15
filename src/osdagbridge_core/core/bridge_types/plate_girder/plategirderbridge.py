@@ -98,7 +98,7 @@ from osdagbridge_core.core.utils.common import (
     KEY_WC_THICKNESS,
     KEY_LL_ECCENTRICITY,
     KEY_WC_DENSITY,
-    KEY_MP_GD_SEGMENT_TABLE, KEY_MP_GIRDER_SYMMETRY, KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_WEB_DEPTH, KEY_MP_GIRDER_WEB_THICKNESS,
+    KEY_MP_GD_SEGMENT_TABLE, KEY_MP_GIRDER_TYPE, KEY_MP_GIRDER_SYMMETRY, KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_WEB_DEPTH, KEY_MP_GIRDER_WEB_THICKNESS,
     KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
     KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
     KEY_MP_GIRDER_SECTIONAL_AREA, KEY_MP_GIRDER_MASS,
@@ -575,6 +575,72 @@ class PlateGirderBridge:
                 if gi == 0:
                     _resolve_one(base_key, initial_sizing_mm)
 
+    def _recompute_welded_section_properties(self) -> None:
+        """
+        For Custom mode welded girders, recompute all steel section properties
+        from the user dimensions after mm->m conversion, using the single source
+        of truth (steel_i_section_properties). Covers web depth, area, inertia,
+        section moduli, torsion, and warping. Rolled girders are skipped.
+        """
+        from .initial_sizing import steel_i_section_properties
+        inp = self.input_dict
+        if str(inp.get(KEY_DESIGN_MODE, '')).strip() == 'Optimized':
+            return
+
+        _DIM_KEYS = {
+            'D':      KEY_MP_GIRDER_DEPTH,
+            'bf_top': KEY_MP_GIRDER_TOP_FLANGE_WIDTH,
+            'tf_top': KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+            'bf_bot': KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,
+            'tf_bot': KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
+            'tw':     KEY_MP_GIRDER_WEB_THICKNESS,
+        }
+        _OUT_KEYS = (
+            KEY_MP_GIRDER_WEB_DEPTH,
+            KEY_MP_GIRDER_SECTIONAL_AREA,
+            KEY_MP_GIRDER_MASS,
+            KEY_MP_GIRDER_SECTIONAL_IZ,
+            KEY_MP_GIRDER_SECTIONAL_IY,
+            KEY_MP_GIRDER_RADIUS_GYRATION_Z,
+            KEY_MP_GIRDER_RADIUS_GYRATION_Y,
+            KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,
+            KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
+            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,
+            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
+            KEY_MP_GIRDER_TORSION_CONSTANT_IT,
+            KEY_MP_GIRDER_WARPING_CONSTANT_IW,
+        )
+
+        count = self._girder_count()
+        for gi in range(count):
+            girder_idx = gi + 1
+            seg_table = inp.get(f"{KEY_MP_GD_SEGMENT_TABLE}.G{girder_idx}", [])
+            member_ids = [1] if not seg_table else [
+                int(m.group(1))
+                for seg in seg_table
+                if (m := re.fullmatch(r"G\d+M(\d+)", str(seg.get("id", "")).strip()))
+            ]
+
+            for mi in member_ids:
+                suffix = f".G{girder_idx}.M{mi}"
+                girder_type = str(
+                    inp.get(f"{KEY_MP_GIRDER_TYPE}{suffix}", inp.get(KEY_MP_GIRDER_TYPE, "Welded"))
+                ).strip()
+                if girder_type != "Welded":
+                    continue
+
+                try:
+                    dims = {arg: float(inp[f"{key}{suffix}"]) for arg, key in _DIM_KEYS.items()}
+                except (KeyError, TypeError, ValueError):
+                    continue
+
+                props = steel_i_section_properties(**dims)
+                for k in _OUT_KEYS:
+                    inp[f"{k}{suffix}"] = props[k]
+                if gi == 0 and mi == 1:
+                    for k in _OUT_KEYS:
+                        inp[k] = props[k]
+
     def _convert_girder_dims_mm_to_m(self) -> None:
         """
         Convert per-girder dimensional keys from mm back to SI metres in
@@ -628,7 +694,15 @@ class PlateGirderBridge:
             # so leaving it in mm yields a mm×1000 unit blow-up (negative web depth).
             _to_m(base_key)
             for gi in range(count):
-                _to_m(f"{base_key}.G{gi + 1}.M1")
+                girder_idx = gi + 1
+                seg_table = inp.get(f"{KEY_MP_GD_SEGMENT_TABLE}.G{girder_idx}", [])
+                member_ids = [1] if not seg_table else [
+                    int(m.group(1))
+                    for seg in seg_table
+                    if (m := re.fullmatch(r"G\d+M(\d+)", str(seg.get("id", "")).strip()))
+                ]
+                for mi in member_ids:
+                    _to_m(f"{base_key}.G{girder_idx}.M{mi}")
 
     def _run_stage(self, stage_num: str, func, *args, **kwargs):
         # Check for user cancel before entering each stage, then emit start/complete markers
@@ -738,6 +812,7 @@ class PlateGirderBridge:
             # Pre-stage: Unit conversions (must run before validation)
             self._resolve_optimized_bounds_to_mm()
             self._convert_girder_dims_mm_to_m()
+            self._recompute_welded_section_properties()
             
             # Stage 1: Input Validation
             self._run_stage("1", self._validate_inputs)
