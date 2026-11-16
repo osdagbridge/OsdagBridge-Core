@@ -59,6 +59,8 @@ dependencies = [
   "plotly",
   "PyYAML",
   "click",
+  "setu @ git+https://github.com/nishikantmandal007/setu.git@main",
+  "osdag-core @ git+https://github.com/osdag-admin/osdag-core.git@main",
 ]
 
 [project.optional-dependencies]

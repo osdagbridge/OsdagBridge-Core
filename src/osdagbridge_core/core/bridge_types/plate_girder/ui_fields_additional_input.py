@@ -586,7 +586,8 @@ _LIVE_LOAD_TAB_SCHEMA = {
                         "id":              KEY_BL_IRC_CLASS_SV,
                         "label":           "Class SV",
                         "type":            TYPE_CHECKBOX,
-                        "default_checked": True,
+                        "default_checked": False,   # no braking with Class SV (IRC:6-2017 cl. 204.5.4)
+                        "enabled":         False,
                         "label_first":     True,
                     }]
                 },
