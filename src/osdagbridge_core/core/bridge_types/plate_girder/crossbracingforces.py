@@ -275,7 +275,7 @@ def resolve_diag_chord_force(vz_kn: float, cos_alpha: float) -> tuple[float, flo
 # Property-key-suffix -> details-dict-key, shared by every bracing member's
 # section-property dump (diagonal / top_chord / bottom_chord, CB and ED alike).
 _SECTION_PROP_FIELDS = {
-    "L": "L", "H": "H", "B": "B", "TW": "tw", "TF": "tF", "RZ": "rz", "M": "M", "A": "A",
+    "H": "H", "B": "B", "TW": "tw", "TF": "tF", "RZ": "rz", "M": "M", "A": "A",
     "IZ": "Iz", "IV": "Iv", "RV": "rv", "ZZ": "Zz", "ZV": "Zv", "ZUZ": "Zuz", "ZUV": "Zuv",
 }
 
@@ -1143,9 +1143,11 @@ class CrossBracingForces:
         print(sep)
 
 
-def make_prop_keys(*consts) -> dict:
-    """Zip the 15 _SECTION_PROP_FIELDS names onto a member's KEY_TD_*_PROP_* constants."""
-    return dict(zip(_SECTION_PROP_FIELDS.keys(), consts))
+def make_prop_keys(l_const, *consts) -> dict:
+    """Zip l_const for L, and the 14 _SECTION_PROP_FIELDS names onto a member's KEY_TD_*_PROP_* constants."""
+    d = {"L": l_const}
+    d.update(zip(_SECTION_PROP_FIELDS.keys(), consts))
+    return d
 
 
 _CB_DIAG_PROP_KEYS = make_prop_keys(

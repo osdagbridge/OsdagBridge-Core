@@ -3547,7 +3547,6 @@ class PlateGirderBridge:
                     return {
                         "designation": row[0],
                         "type": "ANGLE",
-                        "L": 0.0,
                         "H": val_f(row[3]) / 1000.0,
                         "B": val_f(row[4]) / 1000.0,
                         "tw": val_f(row[5]) / 1000.0,
@@ -3591,7 +3590,6 @@ class PlateGirderBridge:
                 return {
                     "designation": row[0],
                     "type": "CHANNEL",
-                    "L": 0.0,
                     "H": val_f(row[3]) / 1000.0,
                     "B": val_f(row[4]) / 1000.0,
                     "tw": val_f(row[5]) / 1000.0,
