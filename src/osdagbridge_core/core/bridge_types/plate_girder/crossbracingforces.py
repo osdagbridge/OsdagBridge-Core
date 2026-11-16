@@ -212,8 +212,8 @@ _OSDAG_PROFILE_MAP = {
     "Angle":                    ("Angles",                 None),
     "Double Angle (Long Leg)":  ("Back to Back Angles",    "Long Leg"),
     "Double Angle (Short Leg)": ("Back to Back Angles",    "Short Leg"),
-    "Channel":                  ("Channels",               None),
-    "Double Channel":           ("Back to Back Channels",  None),
+    "Channel":                  ("Channels",               "Web"),
+    "Double Channel":           ("Back to Back Channels",  "Web"),
 }
 
 
@@ -293,7 +293,7 @@ def populate_section_properties(
 
     if leg_keys and details["type"] in ("ANGLE", "CHANNEL"):
         h_k, w_k, t_k = leg_keys
-        h_src = "H" if details["type"] == "ANGLE" else "L"
+        h_src = "H"
         output_dict[make_pair_key(h_k, pair_id)] = details[h_src] * 1000.0
         output_dict[make_pair_key(w_k, pair_id)] = details["B"] * 1000.0
         output_dict[make_pair_key(t_k, pair_id)] = details["tw"] * 1000.0
