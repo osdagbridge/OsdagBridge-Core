@@ -16,8 +16,8 @@ def refuse_vehicle(key, value):
 
 # IRC:6-2017 as amended no longer has these: Class AA (deleted by Amendment 10, cl. 201.1 and Annex A) and braking with Class SV
 # (cl. 204.5.4: no braking on the SV; set_input switches it off before this check); Class B is for timber bridges.
-NOT_IN_IRC = {C.KEY_LL_IRC_AA_WHEELED: "Class AA was deleted by IRC:6 Amendment 10 (cl. 201.1, Annex A)",
-              C.KEY_LL_IRC_AA_TRACKED: "Class AA was deleted by IRC:6 Amendment 10 (cl. 201.1, Annex A)",
+NOT_IN_IRC = {"loading.live_load.irc.aa_wheeled": "Class AA was deleted by IRC:6 Amendment 10 (cl. 201.1, Annex A)",
+              "loading.live_load.irc.aa_tracked": "Class AA was deleted by IRC:6 Amendment 10 (cl. 201.1, Annex A)",
               C.KEY_BL_IRC_CLASS_SV: "IRC:6 cl. 204.5.4 applies no braking with Class SV"}
 
 

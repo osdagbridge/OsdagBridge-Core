@@ -437,7 +437,7 @@ def test_results_data_matches_original_loops():
 
 
 # What IRC:6 as amended no longer has stops the run with its clause: Class AA (Amendment 10) and braking with Class SV (204.5.4).
-@pytest.mark.parametrize("key,says", [(C.KEY_LL_IRC_AA_WHEELED, "Amendment 10"), (C.KEY_LL_IRC_AA_TRACKED, "Amendment 10"),
+@pytest.mark.parametrize("key,says", [("loading.live_load.irc.aa_wheeled", "Amendment 10"), ("loading.live_load.irc.aa_tracked", "Amendment 10"),
                                       (C.KEY_BL_IRC_CLASS_SV, "204.5.4")])
 def test_not_in_irc(key, says):
     b = prepared(supported_input())
@@ -846,9 +846,11 @@ def test_live_load_report_values(setu_bridge):
     b = setu_bridge
     span_m = float(b.input_dict[C.KEY_SPAN])
     assert b.output_dict[C.KEY_LL_IMPACT_FACTOR_CLASS_A] == round(1 + 9 / (13.5 + span_m), 3)
-    assert b.output_dict[C.KEY_LL_IMPACT_FACTOR_CLASS_AA_70R] == b.output_dict[C.KEY_LL_IMPACT_FACTOR_70R_TRACKED] == 1.1
-    # cl. 208.3 with Amendment 10: 70R wheeled 25 % up to 23 m, then the Class A curve
-    assert b.output_dict[C.KEY_LL_IMPACT_FACTOR_70R_WHEELED] == round(1 + 9 / (13.5 + span_m), 3)
+    assert b.output_dict[C.KEY_LL_IMPACT_FACTOR_70R_TRACKED] == 1.1
+    # cl. 208.3 with Amendment 10: 70R wheeled 25 % up to 23 m, then the Class A curve; the report's AA/70R row shows it
+    assert b.output_dict[C.KEY_LL_IMPACT_FACTOR_CLASS_AA_70R] == round(1 + 9 / (13.5 + span_m), 3)
+    # cl. 204.6: the fatigue truck takes half the Class A impact
+    assert b.output_dict[C.KEY_LL_IMPACT_FACTOR_FATIGUE] == round(1 + 0.5 * 9 / (13.5 + span_m), 3)
     assert b.output_dict[C.KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_SV] == 3850.0
     assert b.output_dict[C.KEY_ANALYSIS_MESH] == "Standard"
     # IRC:6-2017 Amendment 10 (and Amendment 8 for the fatigue truck) print these in kN

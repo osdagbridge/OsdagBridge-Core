@@ -809,7 +809,6 @@ KEY_LL_BRAKING_VEHICLES = "loading.live_load.braking.vehicles"   # vehicle types
 KEY_LL_APPLIED_BRAKING = "loading.live_load.braking.applied"
 KEY_LL_GOVERNING_CASE = "loading.live_load.governing_case"
 KEY_LL_CASES_CONSIDERED = "loading.live_load.cases_considered"
-KEY_LL_IMPACT_FACTOR_70R_WHEELED = "loading.live_load.impact_factor.70r_wheeled"
 KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_A = "loading.live_load.vehicle_total_load.class_a"
 KEY_LL_VEHICLE_TOTAL_LOAD_70R_WHEELED = "loading.live_load.vehicle_total_load.70r_wheeled"
 KEY_LL_VEHICLE_TOTAL_LOAD_70R_TRACKED = "loading.live_load.vehicle_total_load.70r_tracked"
@@ -827,10 +826,10 @@ KEY_BL_IRC_CLASS_SV       = "bl_irc_class_sv"
 KEY_BL_IRC_CLASS_FATIGUE  = "bl_irc_class_fatigue"
 
 # setu always searches the first family (IRC:6-2017 with Amendment 10: Class A, 70R wheeled and tracked, and Fig. 1 note 3's 70R single
-# axle and bogie) and leaves out the second: Class AA was deleted by Amendment 10 (cl. 201.1, Annex A), and Class SV takes no braking
-# (cl. 204.5.4). Class SV itself is a choice the road category governs (cl. 201.1), checked in unsupported_inputs.
-SETU_REQUIRED_VEHICLES = (KEY_LL_IRC_CLASS_A, KEY_LL_IRC_70R_WHEELED, KEY_LL_IRC_70R_TRACKED, KEY_LL_IRC_70R_BOGIE)
-SETU_UNSUPPORTED_VEHICLES = (KEY_LL_IRC_AA_WHEELED, KEY_LL_IRC_AA_TRACKED, KEY_BL_IRC_CLASS_SV)
+# axle and bogie, which has no checkbox) and leaves out the second: Class SV takes no braking (cl. 204.5.4). Class SV itself is a choice
+# the road category governs (cl. 201.1), checked in unsupported_inputs.
+SETU_REQUIRED_VEHICLES = (KEY_LL_IRC_CLASS_A, KEY_LL_IRC_70R_WHEELED, KEY_LL_IRC_70R_TRACKED)
+SETU_UNSUPPORTED_VEHICLES = (KEY_BL_IRC_CLASS_SV,)
 
 # Site conditions for the live load (IRC:6-2017 with Amendment 10)
 KEY_LL_ROAD_CATEGORY = "loading.live_load.road_category"  # cl. 201.1: Class SV for all new bridges except rural, district and village roads
