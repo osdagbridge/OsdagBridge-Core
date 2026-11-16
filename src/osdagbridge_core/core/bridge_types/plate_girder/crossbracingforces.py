@@ -1063,10 +1063,10 @@ class CrossBracingForces:
                         _CB_DIAG_PROP_KEYS, section_type_key=KEY_MP_CB_BRACING_SECTION_TYPE,
                         leg_keys=(KEY_MP_CB_DIAGONAL_LEG_H, KEY_MP_CB_DIAGONAL_LEG_W, KEY_MP_CB_DIAGONAL_THICKNESS),
                     )
-                    # Override L with actual diagonal length from geometry, not girder spacing
+                    # Store L with actual diagonal length from geometry, not girder spacing
                     diag_len = forces_dict.get("geometry", {}).get(pair, {}).get("diagonal_length_m")
                     if diag_len is not None:
-                        bridge.output_dict[make_pair_key(KEY_TD_CB_PROP_L, pair_id)] = round(diag_len, 4)
+                        bridge.output_dict[make_pair_key(KEY_TD_CB_PROP_L, pair_id)] = float(diag_len)
 
             top_details = None
             if top_chord_enabled and top_chord_des:
@@ -1078,10 +1078,10 @@ class CrossBracingForces:
                         _CB_TOP_CHORD_PROP_KEYS, section_type_key=KEY_MP_CB_TOP_CHORD_SECTION_TYPE,
                         leg_keys=(KEY_MP_CB_TOP_CHORD_LEG_H, KEY_MP_CB_TOP_CHORD_LEG_W, KEY_MP_CB_TOP_CHORD_THICKNESS),
                     )
-                    # Override L with girder spacing — chords run horizontally between girders
+                    # Store L with girder spacing — chords run horizontally between girders
                     chord_len = forces_dict.get("geometry", {}).get(pair, {}).get("girder_spacing_m")
                     if chord_len is not None:
-                        bridge.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_L, pair_id)] = round(chord_len, 4)
+                        bridge.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_L, pair_id)] = float(chord_len)
 
             if bottom_chord_enabled and bottom_chord_des:
                 bc_details = top_details if (top_chord_des == bottom_chord_des and top_details) \
@@ -1093,10 +1093,10 @@ class CrossBracingForces:
                         _CB_BOTTOM_CHORD_PROP_KEYS, section_type_key=KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,
                         leg_keys=(KEY_MP_CB_BOTTOM_CHORD_LEG_H, KEY_MP_CB_BOTTOM_CHORD_LEG_W, KEY_MP_CB_BOTTOM_CHORD_THICKNESS),
                     )
-                    # Override L with girder spacing — chords run horizontally between girders
+                    # Store L with girder spacing — chords run horizontally between girders
                     chord_len = forces_dict.get("geometry", {}).get(pair, {}).get("girder_spacing_m")
                     if chord_len is not None:
-                        bridge.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_L, pair_id)] = round(chord_len, 4)
+                        bridge.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_L, pair_id)] = float(chord_len)
 
         bridge.crossbracing_design_results = pair_designs
         return pair_designs
@@ -1571,7 +1571,7 @@ class EndDiaphragmForces:
                             leg_keys=(KEY_MP_ED_DIAGONAL_LEG_H, KEY_MP_ED_DIAGONAL_LEG_W, KEY_MP_ED_DIAGONAL_THICKNESS),
                         )
                         if L_d is not None:
-                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_L, pair_id)] = round(L_d, 4)
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_L, pair_id)] = float(L_d)
 
                 # Populate chords
                 if top_chord_enabled and top_chord_des:
@@ -1583,7 +1583,7 @@ class EndDiaphragmForces:
                             _ED_TOP_CHORD_PROP_KEYS, section_type_key=KEY_MP_ED_TOP_CHORD_SECTION_TYPE,
                             leg_keys=(KEY_MP_ED_TOP_CHORD_LEG_H, KEY_MP_ED_TOP_CHORD_LEG_W, KEY_MP_ED_TOP_CHORD_THICKNESS),
                         )
-                        bridge.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_L, pair_id)] = round(s, 4)
+                        bridge.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_L, pair_id)] = float(s)
 
                 if bottom_chord_enabled and bottom_chord_des:
                     bridge.output_dict[make_pair_key(KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG, pair_id)] = bottom_chord_des
@@ -1594,7 +1594,7 @@ class EndDiaphragmForces:
                             _ED_BOTTOM_CHORD_PROP_KEYS, section_type_key=KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
                             leg_keys=(KEY_MP_ED_BOTTOM_CHORD_LEG_H, KEY_MP_ED_BOTTOM_CHORD_LEG_W, KEY_MP_ED_BOTTOM_CHORD_THICKNESS),
                         )
-                        bridge.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_L, pair_id)] = round(s, 4)
+                        bridge.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_L, pair_id)] = float(s)
 
             # -- CASE B: ROLLED BEAM DIAPHRAGM --
             elif ed_type == "Rolled Beam":
