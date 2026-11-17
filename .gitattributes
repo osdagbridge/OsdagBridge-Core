@@ -1,0 +1,52 @@
+# Set default behavior to automatically normalize line endings.
+* text=auto
+
+# Python and config: always LF
+*.py text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.sh text eol=lf
+*.html  text eol=lf
+*.css   text eol=lf
+*.scss  text eol=lf
+*.sql   text eol=lf
+*.cfg   text eol=lf
+*.ini   text eol=lf
+
+# Git attributes for files that should always have LF line endings
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# windows scripts
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.vbs text eol=crlf
+
+# Binary files
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.woff binary
+*.woff2 binary
+*.sqlite3 binary
+*.pyc  binary
+*.ui   text eol=lf
+*.qrc  text eol=lf
+*.qss  text eol=lf
+*.ts   text eol=lf
+*.svg  text eol=lf
+
+# Ignore files and directories for export
+tests/        export-ignore
+.github/      export-ignore
+.gitattributes export-ignore
+docs/         export-ignore
