@@ -15,6 +15,9 @@ from osdagbridge_core.core.utils.common import (
     KEY_MP_STIFFENER_LONGITUDINAL,
     CHECK_NAME_ULS_SHEAR_BUCKLING,
     CHECK_NAME_LTB_CONSTRUCTION,
+    KEY_MP_CB_BRACING_SECTION_DESIGNATION,
+    KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
+    KEY_MP_CB_TOP_CHORD_SECTION_DESIG,
     KEY_TD_CB_SECTION_PROPS_BRACING,
     KEY_TD_CB_SECTION_PROPS_BOTTOM_CHORD,
     KEY_TD_CB_SECTION_PROPS_TOP_CHORD,
@@ -1129,11 +1132,15 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None, girder_details=None
                 # Fetch properties from output_dict
                 if member == "diagonal":
                     pfx = KEY_TD_CB_SECTION_PROPS_BRACING
+                    section_key = KEY_MP_CB_BRACING_SECTION_DESIGNATION
                 else:
                     pfx = KEY_TD_CB_SECTION_PROPS_BOTTOM_CHORD
+                    section_key = KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG
                     if bridge.output_dict.get(f"{pfx}.A.{pair_id}") is None:
                         pfx = KEY_TD_CB_SECTION_PROPS_TOP_CHORD
+                        section_key = KEY_MP_CB_TOP_CHORD_SECTION_DESIG
 
+                section = _render_value(bridge.output_dict, f"{section_key}.{pair_id}") or section
                 area_cm2 = bridge.output_dict.get(f"{pfx}.A.{pair_id}")
                 rv_cm = bridge.output_dict.get(f"{pfx}.rv.{pair_id}")
 
@@ -1188,7 +1195,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None, girder_details=None
     else:
         for pair in pairs:
             kl_diag = bridge.get_cb_effective_length(pair, "diagonal")
-            slnd_diag = bridge.get_cb_slenderness(pair, "diagonal")
+            slnd_diag = bridge.get_cb_slenderness(pair, "diagonal", "compression")
             status_diag = get_status_str(slnd_diag, 250)
             
             kl_tc = bridge.get_cb_effective_length(pair, "chord")
@@ -1210,8 +1217,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None, girder_details=None
                 group_rows.append(["Bottom chord", "T", kl_bc, slnd_bc, r"400 --- " + status_bc])
                 
             for row in group_rows:
-                if row[3]:
-                    row[3] = f"{float(row[3]):.2f}"
+                row[3] = f"{float(row[3]):.2f}" if row[3] else "Not available"
             cb_slenderness_groups.append((pair, group_rows))
 
     # Generate Table 5.20(c) rows
