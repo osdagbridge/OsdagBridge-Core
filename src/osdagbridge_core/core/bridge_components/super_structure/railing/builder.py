@@ -3,6 +3,7 @@ from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder, 
 from OCC.Core.gp import gp_Trsf, gp_Vec, gp_Ax2, gp_Pnt, gp_Dir
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform, BRepBuilderAPI_MakePolygon, BRepBuilderAPI_MakeFace
 from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut, BRepAlgoAPI_Fuse
+from .._barrier_geometry import _assemble_parts
 
 
 # Utilities
@@ -10,7 +11,7 @@ from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut, BRepAlgoAPI_Fuse
 def translate(shape, x=0, y=0, z=0):
     trsf = gp_Trsf()
     trsf.SetTranslation(gp_Vec(x, y, z))
-    return BRepBuilderAPI_Transform(shape, trsf, True).Shape()
+    return BRepBuilderAPI_Transform(shape, trsf, False).Shape()
 
 
 def mirror_y(shape):
@@ -130,7 +131,7 @@ def create_rcc_railing(
         ).Shape()
 
     final_shape = BRepAlgoAPI_Fuse(base, body_with_holes).Shape()
-    
+
     # For RCC railing (rectangular usually), mirroring Y might not change much unless Holes are asymmetric.
     # Holes are offset by HOLE_Y_OFFSET_RATIO (-0.2 * width).
     # So yes, we should mirror if RIGHT side.
@@ -182,45 +183,15 @@ def create_steel_railing(
     
     actual_spacing = effective_length / num_spaces
     
-    posts_shape = None
-    
-    # Create rectangular posts
-    for i in range(num_spaces + 1):
-        x = i * actual_spacing
-        
-        if x > length - POST_LENGTH:
-            x = length - POST_LENGTH
-            
-        # Posts are NOT skewed themselves in standard practice, 
-        # but here we keep them square for simplicity and only skew the rails/base
-        post = create_rectangular_prism(POST_LENGTH, POST_BREADTH, post_height, skew_angle=skew_angle)
-        post = translate(post, x=x, z=BASE_HEIGHT)
-        
-        if posts_shape is None:
-            posts_shape = post
-        else:
-            posts_shape = BRepAlgoAPI_Fuse(posts_shape, post).Shape()
+    positions = dict.fromkeys(min(i * actual_spacing, length - POST_LENGTH) for i in range(num_spaces + 1))
+    post = create_rectangular_prism(POST_LENGTH, POST_BREADTH, post_height, skew_angle=skew_angle)
+    posts = [translate(post, x=x, z=BASE_HEIGHT) for x in positions]
 
-    # Rails (positioned relative to total railing height)
-    # Top Rail
-    top_rail = create_rectangular_prism(length, RAIL_SIZE, RAIL_SIZE, skew_angle=skew_angle)
-    top_rail = translate(top_rail, z=railing_height - 2 * RAIL_SIZE)
-    
-    # Mid Rail
-    mid_rail = create_rectangular_prism(length, RAIL_SIZE, RAIL_SIZE, skew_angle=skew_angle)
-    mid_rail = translate(mid_rail, z=BASE_HEIGHT + (post_height * 0.5))
+    rail = create_rectangular_prism(length, RAIL_SIZE, RAIL_SIZE, skew_angle=skew_angle)
+    top_rail = translate(rail, z=railing_height - 2 * RAIL_SIZE)
+    mid_rail = translate(rail, z=BASE_HEIGHT + post_height * 0.5)
+    final_shape = _assemble_parts([base, *posts, top_rail, mid_rail], separated=False)
 
-    rails_fused = BRepAlgoAPI_Fuse(top_rail, mid_rail).Shape()
-    
-    # Combine all components
-    if posts_shape:
-        steel_structure = BRepAlgoAPI_Fuse(posts_shape, rails_fused).Shape()
-    else:
-        steel_structure = rails_fused
-    
-    # Fuse concrete base with steel structure
-    final_shape = BRepAlgoAPI_Fuse(base, steel_structure).Shape()
-    
     if side == "RIGHT":
          final_shape = mirror_y(final_shape)
          

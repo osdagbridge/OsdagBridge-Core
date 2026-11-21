@@ -5,20 +5,15 @@
 - Contains footpath-based positioning logic
 """
 from osdagbridge_core.core.utils.common import *
-from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Trsf, gp_Dir, gp_Ax2, gp_Ax1,gp_Pnt2d, gp_Ax2d, gp_Dir2d
+from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Trsf, gp_Dir, gp_Ax2
 from OCC.Core.BRepBuilderAPI import (
     BRepBuilderAPI_MakePolygon,
     BRepBuilderAPI_MakeFace,
     BRepBuilderAPI_Transform,
-    BRepBuilderAPI_MakeWire,
-    BRepBuilderAPI_MakeEdge
 )
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
-from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
-from OCC.Core.GCE2d import GCE2d_MakeArcOfCircle
-from OCC.Core.Geom import Geom_Plane
-from OCC.Core.gp import gp_Pln
-import numpy as np
+from OCC.Core.Precision import precision
+from .._barrier_geometry import _assemble_parts, _create_w_beam
 import math
 
 
@@ -27,7 +22,7 @@ import math
 def translate(shape, x=0, y=0, z=0):
     trsf = gp_Trsf()
     trsf.SetTranslation(gp_Vec(x, y, z))
-    return BRepBuilderAPI_Transform(shape, trsf, True).Shape()
+    return BRepBuilderAPI_Transform(shape, trsf, False).Shape()
 
 
 def mirror_y(shape):
@@ -127,9 +122,6 @@ def create_semi_rigid_metallic_barrier(
     Geometry: RCC kerb base + steel post channel + spacer channel + W-beam(s).
     """
 
-    import numpy as np
-    import math
-
     # READ DESIGN DATA
     kerb_height = design_dict.get("kerb_height", 100)
     kerb_top_width = design_dict.get("kerb_top_width", 500)
@@ -209,8 +201,6 @@ def create_semi_rigid_metallic_barrier(
         
     actual_spacing = post_range / (num_posts - 1) if num_posts > 1 else 0
 
-    posts_combined = None
-
     def create_vertical_channel(h, d, w, tw, tf):
         # Creates a C-channel prism along Z.
         # d is along X, w is along Y.
@@ -243,106 +233,22 @@ def create_semi_rigid_metallic_barrier(
     # Beam is to the Right of Spacer.
     
 
-    for i in range(num_posts):
-        x_pos = start_x + (i * actual_spacing)
-
-        post_solid = create_vertical_channel(
-            post_height, post_depth,
-            post_width, post_web_thk, post_flange_thk
-        )
-
-        post_solid = translate(
-            post_solid,
-            x=x_pos,
-            y=post_y_center,
-            z=kerb_height
-        )
-
-        posts_combined = (
-            post_solid if posts_combined is None
-            else BRepAlgoAPI_Fuse(posts_combined, post_solid).Shape()
-        )
+    positions = list(dict.fromkeys(start_x + i * actual_spacing for i in range(num_posts)))
+    tolerance = precision.Confusion()
+    post = create_vertical_channel(
+        post_height, post_depth, post_width, post_web_thk, post_flange_thk
+    )
+    posts_combined = _assemble_parts(
+        [translate(post, x=x, y=post_y_center, z=kerb_height) for x in positions],
+        separated=actual_spacing > post_depth + tolerance,
+    )
 
     spacer_depth = design_dict.get("spacer_depth", 150)
     spacer_width = design_dict.get("spacer_width", 200)
     spacer_web_thk = design_dict.get("spacer_web_thickness", 5.0)
     spacer_flange_thk = design_dict.get("spacer_flange_thickness", 7.8)
     
-    spacers_combined = None
-
-    # W-BEAM 
-    # Corrected Geometry: Vertical orientation (W-profile in Y-Z plane)
-    
-    W_BEAM_HEIGHT = spacer_height  # Aligned with spacer height as requested
-    W_BEAM_DEPTH = 83.0    
-    W_BEAM_THICKNESS = design_dict.get("w_beam_thickness", 3.0)
-
-    sigma = W_BEAM_HEIGHT / 10.0
-    mu1 = W_BEAM_HEIGHT * 0.25
-    mu2 = W_BEAM_HEIGHT * 0.75
-    amp = W_BEAM_DEPTH * 1.5
-    
-    from OCC.Core.GeomAPI import GeomAPI_PointsToBSpline
-    from OCC.Core.TColgp import TColgp_Array1OfPnt
-    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeWire
-    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
-
-    def make_w_beam_face():
-        points = 40
-        zs = np.linspace(0, W_BEAM_HEIGHT, points)
-
-        # OUTER CURVE 
-        outer_pts = TColgp_Array1OfPnt(1, points)
-        for i, z in enumerate(zs, start=1):
-            y_wave = (
-                amp * math.exp(-((z - mu1) ** 2) / (2 * sigma ** 2)) +
-                amp * math.exp(-((z - mu2) ** 2) / (2 * sigma ** 2))
-            )
-            # Offset X by y_wave * tan(skew)
-            outer_pts.SetValue(i, gp_Pnt(get_skew_x(y_wave), y_wave, z))
-        
-        y_top_outer = y_wave
-        y_bottom_outer = (
-            amp * math.exp(-((zs[0] - mu1) ** 2) / (2 * sigma ** 2)) +
-            amp * math.exp(-((zs[0] - mu2) ** 2) / (2 * sigma ** 2))
-        )
-
-        outer_curve = GeomAPI_PointsToBSpline(outer_pts).Curve()
-
-        # INNER CURVE (OFFSET) 
-        inner_pts = TColgp_Array1OfPnt(1, points)
-        for i, z in enumerate(zs, start=1):
-            y_wave_inner = (
-                amp * math.exp(-((z - mu1) ** 2) / (2 * sigma ** 2)) +
-                amp * math.exp(-((z - mu2) ** 2) / (2 * sigma ** 2))
-            ) - W_BEAM_THICKNESS
-            # Offset X by y_wave_inner * tan(skew)
-            inner_pts.SetValue(i, gp_Pnt(get_skew_x(y_wave_inner), y_wave_inner, z))
-        
-        y_top_inner = y_wave_inner
-        y_bottom_inner = (
-            amp * math.exp(-((zs[0] - mu1) ** 2) / (2 * sigma ** 2)) +
-            amp * math.exp(-((zs[0] - mu2) ** 2) / (2 * sigma ** 2))
-        ) - W_BEAM_THICKNESS
-
-        inner_curve = GeomAPI_PointsToBSpline(inner_pts).Curve()
-
-        # COMBINE INTO CLOSED WIRE 
-        wire = BRepBuilderAPI_MakeWire()
-        wire.Add(BRepBuilderAPI_MakeEdge(outer_curve).Edge())
-        wire.Add(BRepBuilderAPI_MakeEdge(
-            gp_Pnt(get_skew_x(y_top_outer), y_top_outer, W_BEAM_HEIGHT),
-            gp_Pnt(get_skew_x(y_top_inner), y_top_inner, W_BEAM_HEIGHT)
-        ).Edge())
-        wire.Add(BRepBuilderAPI_MakeEdge(inner_curve).Edge())
-        wire.Add(BRepBuilderAPI_MakeEdge(
-            gp_Pnt(get_skew_x(y_bottom_inner), y_bottom_inner, 0.0),
-            gp_Pnt(get_skew_x(y_bottom_outer), y_bottom_outer, 0.0)
-        ).Edge())
-
-        return BRepBuilderAPI_MakeFace(wire.Wire()).Face()
-
-    beams_combined = None
+    w_beam_thickness = design_dict.get("w_beam_thickness", 3.0)
 
     if number_of_w_beams == 1:
         # Top of beam/spacer aligns with post top
@@ -357,56 +263,21 @@ def create_semi_rigid_metallic_barrier(
         h_lower = h_upper - spacer_height - 145
         beam_center_heights = [h_lower, h_upper]
 
-    for h_center in beam_center_heights: # Take min of required locally
-        if beams_combined is not None and number_of_w_beams == 1: break 
-        
-        # beam_z is bottom of the beam
-        beam_z = kerb_height + h_center - W_BEAM_HEIGHT / 2.0
-        
-        # SPACER GENERATION (Per Beam)
-        spacer_z = kerb_height + h_center - spacer_height / 2.0
-        spacer_y_center = post_y_center + post_width / 2.0 + spacer_width / 2.0
-
-        # Spacers (one per post)
-        for i in range(num_posts):
-            x_pos = start_x + (i * actual_spacing)
-
-            spacer_solid = create_vertical_channel(
-                spacer_height, spacer_depth,
-                spacer_width, spacer_web_thk, spacer_flange_thk
-            )
-
-            spacer_solid = translate(
-                spacer_solid,
-                x=x_pos,
-                y=spacer_y_center,
-                z=spacer_z
-            )
-
-            spacers_combined = (
-                spacer_solid if spacers_combined is None
-                else BRepAlgoAPI_Fuse(spacers_combined, spacer_solid).Shape()
-            )
-
-        # BEAM GENERATION
-        beam_y_pos = spacer_y_center + spacer_width / 2.0
-        
-        beam_face = make_w_beam_face()
-        
-        beam_solid = BRepPrimAPI_MakePrism(
-            beam_face, gp_Vec(length, 0, 0)
-        ).Shape()
-
-        beam_solid = translate(
-            beam_solid,
-            y=beam_y_pos,
-            z=beam_z
-        )
-
-        beams_combined = (
-            beam_solid if beams_combined is None
-            else BRepAlgoAPI_Fuse(beams_combined, beam_solid).Shape()
-        )
+    spacer = create_vertical_channel(
+        spacer_height, spacer_depth, spacer_width, spacer_web_thk, spacer_flange_thk
+    )
+    beam = _create_w_beam(length, spacer_height, w_beam_thickness, 83.0 * 1.5, math.tan(skew_rad))
+    spacer_y_center = post_y_center + post_width / 2.0 + spacer_width / 2.0
+    beam_y = spacer_y_center + spacer_width / 2.0
+    levels = [kerb_height + h - spacer_height / 2.0 for h in beam_center_heights]
+    spacers_combined = _assemble_parts(
+        [translate(spacer, x=x, y=spacer_y_center, z=z) for z in levels for x in positions],
+        separated=len(positions) == 1 or actual_spacing > spacer_depth + tolerance,
+    )
+    beams_combined = _assemble_parts(
+        [translate(beam, y=beam_y, z=z) for z in levels],
+        separated=True,  # The two beam levels have a fixed 145 mm clear gap.
+    )
 
     # IF RIGHT SIDE: MIRROR
     res = {
