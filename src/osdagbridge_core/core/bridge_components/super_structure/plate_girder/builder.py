@@ -11,15 +11,16 @@ import math
 import numpy as np
 from dataclasses import dataclass
 
-from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Trsf, gp_Ax3, gp_Dir, gp_Ax2
-from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism, BRepPrimAPI_MakeCylinder
+from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Trsf, gp_Ax3, gp_Dir, gp_Ax1
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism, BRepPrimAPI_MakeCylinder, BRepPrimAPI_MakeRevol
 from OCC.Core.BRepBuilderAPI import (
     BRepBuilderAPI_MakeEdge,
     BRepBuilderAPI_MakeWire,
     BRepBuilderAPI_MakeFace,
+    BRepBuilderAPI_MakePolygon,
     BRepBuilderAPI_Transform
 )
-from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
+from OCC.Core.Precision import precision
 
 @dataclass
 class GirderSegment:
@@ -77,9 +78,6 @@ def _make_plate(origin, length, width, thickness, u_dir, w_dir):
     return BRepPrimAPI_MakePrism(face, extrude_vec).Shape()
 
 
-from OCC.Core.gp import gp_Ax1, gp_Dir
-from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
-
 def _rotate_about_z(shape, angle_deg):
     trsf = gp_Trsf()
     trsf.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)),
@@ -133,22 +131,41 @@ def _create_stiffener_plate(position, width, height, thickness, chamfer, side):
 
 
 def create_shear_stud(base_dia, base_height, top_dia, top_height):
-    """Create stepped cylindrical shape"""
+    """Create stepped cylindrical shape using 2D profile revolution"""
+    if not all(math.isfinite(value) for value in (base_dia, base_height, top_dia, top_height)):
+        raise ValueError("Shear stud dimensions must be finite")
+    if min(base_dia, top_dia) <= 0 or min(base_height, top_height) < 0:
+        raise ValueError("Shear stud diameters must be positive and heights nonnegative")
+
     base_radius = base_dia / 2.0
     top_radius = top_dia / 2.0
+    height = base_height + top_height
+    tolerance = precision.Confusion()
+    if height <= tolerance:
+        raise ValueError("Shear stud height must exceed the modeling tolerance")
+    if base_height <= tolerance or top_height <= tolerance or abs(top_radius - base_radius) <= tolerance:
+        radius = top_radius if base_height <= tolerance else base_radius
+        return BRepPrimAPI_MakeCylinder(radius, height).Shape()
 
-    # Base cylinder at origin
-    base_axis = gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1))
-    base_cyl = BRepPrimAPI_MakeCylinder(base_axis, base_radius, base_height).Shape()
+    poly = BRepBuilderAPI_MakePolygon()
+    poly.Add(gp_Pnt(0, 0, 0))
+    poly.Add(gp_Pnt(base_radius, 0, 0))
+    poly.Add(gp_Pnt(base_radius, 0, base_height))
+    poly.Add(gp_Pnt(top_radius, 0, base_height))
+    poly.Add(gp_Pnt(top_radius, 0, height))
+    poly.Add(gp_Pnt(0, 0, height))
+    poly.Close()
 
-    # Top cylinder placed on base
-    top_axis = gp_Ax2(gp_Pnt(0, 0, base_height), gp_Dir(0, 0, 1))
-    top_cyl = BRepPrimAPI_MakeCylinder(top_axis, top_radius, top_height).Shape()
-
-    # Fuse both
-    stepped_shape = BRepAlgoAPI_Fuse(base_cyl, top_cyl).Shape()
-
-    return stepped_shape
+    if not poly.IsDone():
+        raise ValueError("Could not build the shear stud profile wire")
+    face = BRepBuilderAPI_MakeFace(poly.Wire())
+    if not face.IsDone():
+        raise ValueError("Could not build the shear stud profile face")
+    rev_ax = gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1))
+    revolve = BRepPrimAPI_MakeRevol(face.Face(), rev_ax)
+    if not revolve.IsDone():
+        raise ValueError("Could not revolve the shear stud profile")
+    return revolve.Shape()
 
 
 def build_plate_girder_geometry(
@@ -439,18 +456,21 @@ def build_plate_girder_geometry(
             actual_total_width = min(desired_total_width, max_total_transverse_width)
             
             actual_spacing = actual_total_width / (num_shear_studs_per_section - 1)
+            stud_diameter = max(shear_stud_base_diameter, shear_stud_top_diameter)
+            if actual_spacing < stud_diameter - precision.Confusion():
+                raise ValueError("Top flange width and spacing cannot fit the requested shear studs")
             start_x = -actual_total_width / 2.0
             
             for k in range(num_shear_studs_per_section):
                 transverse_positions.append(start_x + k * actual_spacing)
 
+        # Studs are axially symmetric. Place them directly in the rotated girder frame.
+        trsf = gp_Trsf()
         for i in range(num_rows):
             y_pos = start_y + i * shear_stud_pitch
             for x_pos in transverse_positions:
-                trsf = gp_Trsf()
-                trsf.SetTranslation(gp_Vec(x_pos, y_pos, z_stud))
-                stud = BRepBuilderAPI_Transform(base_stud, trsf, True).Shape()
-                shear_studs.append(stud)
+                trsf.SetTranslation(gp_Vec(y_pos, -x_pos, z_stud))
+                shear_studs.append(BRepBuilderAPI_Transform(base_stud, trsf, False).Shape())
 
     # SUPPORTS - wireframe rectangular frames, border only, no fill.
     # supports_tri = all constraints frames (accent colour in viewer)
@@ -584,10 +604,6 @@ def build_plate_girder_geometry(
         _rotate_about_z(s, -90) for s in supports_cyl
     ]
 
-    shear_studs = [
-        _rotate_about_z(s, -90) for s in shear_studs
-    ]
-    
 
     supports_vertical = []
     supports_wide_horiz = []

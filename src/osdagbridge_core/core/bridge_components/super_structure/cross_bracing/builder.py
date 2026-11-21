@@ -27,9 +27,14 @@ Features:
 
 import math
 from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Trsf, gp_Ax1, gp_Ax2, gp_Dir
-from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakePrism
 from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
-from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+from OCC.Core.BRepBuilderAPI import (
+    BRepBuilderAPI_Transform,
+    BRepBuilderAPI_MakePolygon,
+    BRepBuilderAPI_MakeFace,
+)
+from OCC.Core.Precision import precision
 
 from osdagbridge_core.core.utils.common import (
     KEY_MP_CB_TYPE, KEY_MP_CB_TOP_CHORD, KEY_MP_CB_BOTTOM_CHORD,
@@ -114,6 +119,38 @@ def _pk(key, pair_key):
 
 # SECTION GEOMETRY CREATORS
 
+def _translate_section(shape, x, y, z):
+    transform = gp_Trsf()
+    transform.SetTranslation(gp_Vec(x, y, z))
+    return BRepBuilderAPI_Transform(shape, transform, False).Shape()
+
+
+def _extrude_section(poly, length):
+    poly.Close()
+    if not poly.IsDone():
+        raise ValueError("Could not build the bracing profile wire")
+    face = BRepBuilderAPI_MakeFace(poly.Wire())
+    if not face.IsDone():
+        raise ValueError("Could not build the bracing profile face")
+    prism = BRepPrimAPI_MakePrism(face.Face(), gp_Vec(length, 0, 0))
+    if not prism.IsDone():
+        raise ValueError("Could not extrude the bracing profile")
+    return prism.Shape()
+
+
+def _has_open_flange_recess(depth, width, web_thickness, flange_thickness):
+    tolerance = precision.Confusion()
+    return width - web_thickness > tolerance and depth - 2 * flange_thickness > tolerance
+
+
+def _fuse_web_and_flanges(length, depth, width, web_thickness, flange_thickness, flange_y):
+    web = BRepPrimAPI_MakeBox(length, web_thickness, depth).Shape()
+    flange = BRepPrimAPI_MakeBox(length, width, flange_thickness).Shape()
+    bottom = _translate_section(flange, 0, flange_y, 0)
+    top = _translate_section(flange, 0, flange_y, depth - flange_thickness)
+    return BRepAlgoAPI_Fuse(BRepAlgoAPI_Fuse(web, bottom).Shape(), top).Shape()
+
+
 def _create_angle_section(length, leg_h, leg_w, thickness):
     """
     Create a single angle section (L-shape).
@@ -127,23 +164,26 @@ def _create_angle_section(length, leg_h, leg_w, thickness):
     Returns:
         TopoDS_Shape: The angle section centered at origin
     """
-    # Create two perpendicular legs
-    # Vertical leg (longer)
-    leg1 = BRepPrimAPI_MakeBox(length, thickness, leg_h).Shape()
-    
-    # Horizontal leg (shorter)
-    leg2 = BRepPrimAPI_MakeBox(length, leg_w, thickness).Shape()
-    
-    # Fuse the two legs to form L-shape
-    angle = BRepAlgoAPI_Fuse(leg1, leg2).Shape()
-    
-    # Center the section at origin (similar to channel and double angle sections)
-    # The angle should be centered around the X-axis
-    # Move it so the inner corner is at the centroid
-    trsf = gp_Trsf()
-    trsf.SetTranslation(gp_Vec(-length / 2, -leg_w / 2, -leg_h / 2))
-    
-    return BRepBuilderAPI_Transform(angle, trsf, True).Shape()
+    if min(leg_h, leg_w) - thickness <= precision.Confusion():
+        vertical = BRepPrimAPI_MakeBox(length, thickness, leg_h).Shape()
+        horizontal = BRepPrimAPI_MakeBox(length, leg_w, thickness).Shape()
+        section = BRepAlgoAPI_Fuse(vertical, horizontal).Shape()
+        return _translate_section(section, -length / 2, -leg_w / 2, -leg_h / 2)
+
+    # Construct 6-point closed 2D polyline in the Y-Z plane at x = -length / 2
+    # Profile coordinates are pre-centered around origin
+    y0 = -leg_w / 2.0
+    z0 = -leg_h / 2.0
+    x0 = -length / 2.0
+
+    poly = BRepBuilderAPI_MakePolygon()
+    poly.Add(gp_Pnt(x0, y0, z0))
+    poly.Add(gp_Pnt(x0, y0 + leg_w, z0))
+    poly.Add(gp_Pnt(x0, y0 + leg_w, z0 + thickness))
+    poly.Add(gp_Pnt(x0, y0 + thickness, z0 + thickness))
+    poly.Add(gp_Pnt(x0, y0 + thickness, z0 + leg_h))
+    poly.Add(gp_Pnt(x0, y0, z0 + leg_h))
+    return _extrude_section(poly, length)
 
 
 def _create_channel_section(length, depth, flange_width, web_thickness, flange_thickness):
@@ -160,29 +200,28 @@ def _create_channel_section(length, depth, flange_width, web_thickness, flange_t
     Returns:
         TopoDS_Shape: The channel section centered at origin
     """
-    # Create web
-    web = BRepPrimAPI_MakeBox(length, web_thickness, depth).Shape()
-    
-    # Create bottom flange
-    bottom = BRepPrimAPI_MakeBox(length, flange_width, flange_thickness).Shape()
-    
-    # Create top flange
-    top = BRepPrimAPI_MakeBox(length, flange_width, flange_thickness).Shape()
-    
-    # Position top flange
-    trsf_top = gp_Trsf()
-    trsf_top.SetTranslation(gp_Vec(0, 0, depth - flange_thickness))
-    top = BRepBuilderAPI_Transform(top, trsf_top, True).Shape()
-    
-    # Fuse all components
-    channel = BRepAlgoAPI_Fuse(web, bottom).Shape()
-    channel = BRepAlgoAPI_Fuse(channel, top).Shape()
-    
-    # Center the section at origin
-    trsf = gp_Trsf()
-    trsf.SetTranslation(gp_Vec(-length / 2, -flange_width / 2, -depth / 2))
-    
-    return BRepBuilderAPI_Transform(channel, trsf, True).Shape()
+    if not _has_open_flange_recess(depth, flange_width, web_thickness, flange_thickness):
+        section = _fuse_web_and_flanges(
+            length, depth, flange_width, web_thickness, flange_thickness, 0
+        )
+        return _translate_section(section, -length / 2, -flange_width / 2, -depth / 2)
+
+    # Construct 8-point closed 2D polyline in the Y-Z plane at x = -length / 2
+    # Profile coordinates are pre-centered around origin
+    y0 = -flange_width / 2.0
+    z0 = -depth / 2.0
+    x0 = -length / 2.0
+
+    poly = BRepBuilderAPI_MakePolygon()
+    poly.Add(gp_Pnt(x0, y0, z0))
+    poly.Add(gp_Pnt(x0, y0 + flange_width, z0))
+    poly.Add(gp_Pnt(x0, y0 + flange_width, z0 + flange_thickness))
+    poly.Add(gp_Pnt(x0, y0 + web_thickness, z0 + flange_thickness))
+    poly.Add(gp_Pnt(x0, y0 + web_thickness, z0 + depth - flange_thickness))
+    poly.Add(gp_Pnt(x0, y0 + flange_width, z0 + depth - flange_thickness))
+    poly.Add(gp_Pnt(x0, y0 + flange_width, z0 + depth))
+    poly.Add(gp_Pnt(x0, y0, z0 + depth))
+    return _extrude_section(poly, length)
 
 def _create_double_angle_section(length, leg_h, leg_w, thickness, connection_type="SHORTER_LEG"):
     """
@@ -198,81 +237,46 @@ def _create_double_angle_section(length, leg_h, leg_w, thickness, connection_typ
     Returns:
         TopoDS_Shape: The double angle section centered at origin
     """
+    x0 = -length / 2.0
+    t = thickness
+    t_half = t / 2.0
+
     if connection_type == "SHORTER_LEG":
-        # SHORTER_LEG connection: shorter legs are back-to-back (vertical)
-        # Longer legs point OUTWARD horizontally in opposite directions
-        
-        # First angle: L shape
-        # Shorter leg (vertical) - back-to-back part
-        vertical_leg1 = BRepPrimAPI_MakeBox(
-            gp_Pnt(0, -thickness/2, 0), 
-            gp_Pnt(length, thickness/2, leg_w)
+        h_vert = leg_w
+        w_horiz = leg_h
+    else:  # LONGER_LEG
+        h_vert = leg_h
+        w_horiz = leg_w
+
+    if h_vert - t <= precision.Confusion():
+        # With a collapsed or reversed web recess, retain the legacy box union.
+        web = BRepPrimAPI_MakeBox(
+            gp_Pnt(x0, -t_half, -h_vert / 2),
+            gp_Pnt(-x0, t_half, h_vert / 2),
         ).Shape()
-        # Longer leg (horizontal) - pointing RIGHT
-        horizontal_leg1 = BRepPrimAPI_MakeBox(
-            gp_Pnt(0, thickness/2, leg_w - thickness), 
-            gp_Pnt(length, thickness/2 + leg_h, leg_w)
+        left = BRepPrimAPI_MakeBox(
+            gp_Pnt(x0, -t_half - w_horiz, h_vert / 2 - t),
+            gp_Pnt(-x0, -t_half, h_vert / 2),
         ).Shape()
-        angle1 = BRepAlgoAPI_Fuse(vertical_leg1, horizontal_leg1).Shape()
-        
-        # Second angle: Mirrored L
-        # Shorter leg (vertical) - back-to-back part (same position as first)
-        vertical_leg2 = BRepPrimAPI_MakeBox(
-            gp_Pnt(0, -thickness/2, 0), 
-            gp_Pnt(length, thickness/2, leg_w)
-        ).Shape()
-        # Longer leg (horizontal) - pointing LEFT
-        horizontal_leg2 = BRepPrimAPI_MakeBox(
-            gp_Pnt(0, -thickness/2 - leg_h, leg_w - thickness), 
-            gp_Pnt(length, -thickness/2, leg_w)
-        ).Shape()
-        angle2 = BRepAlgoAPI_Fuse(vertical_leg2, horizontal_leg2).Shape()
-        
-        # Fuse both angles
-        double_angle = BRepAlgoAPI_Fuse(angle1, angle2).Shape()
-        
-        # Center at origin
-        center_trsf = gp_Trsf()
-        center_trsf.SetTranslation(gp_Vec(-length/2, 0, -leg_w/2))
-        
-    else:  # LONGER_LEG connection
-        # LONGER_LEG connection: longer legs are back-to-back (vertical)
-        # Shorter legs point OUTWARD horizontally in opposite directions
-        
-        # First angle: L shape
-        # Longer leg (vertical) - back-to-back part
-        vertical_leg1 = BRepPrimAPI_MakeBox(
-            gp_Pnt(0, -thickness/2, 0), 
-            gp_Pnt(length, thickness/2, leg_h)
-        ).Shape()
-        # Shorter leg (horizontal) - pointing RIGHT
-        horizontal_leg1 = BRepPrimAPI_MakeBox(
-            gp_Pnt(0, thickness/2, leg_h - thickness), 
-            gp_Pnt(length, thickness/2 + leg_w, leg_h)
-        ).Shape()
-        angle1 = BRepAlgoAPI_Fuse(vertical_leg1, horizontal_leg1).Shape()
-        
-        # Second angle: Mirrored L
-        # Longer leg (vertical) - back-to-back part (same position as first)
-        vertical_leg2 = BRepPrimAPI_MakeBox(
-            gp_Pnt(0, -thickness/2, 0), 
-            gp_Pnt(length, thickness/2, leg_h)
-        ).Shape()
-        # Shorter leg (horizontal) - pointing LEFT
-        horizontal_leg2 = BRepPrimAPI_MakeBox(
-            gp_Pnt(0, -thickness/2 - leg_w, leg_h - thickness), 
-            gp_Pnt(length, -thickness/2, leg_h)
-        ).Shape()
-        angle2 = BRepAlgoAPI_Fuse(vertical_leg2, horizontal_leg2).Shape()
-        
-        # Fuse both angles
-        double_angle = BRepAlgoAPI_Fuse(angle1, angle2).Shape()
-        
-        # Center at origin
-        center_trsf = gp_Trsf()
-        center_trsf.SetTranslation(gp_Vec(-length/2, 0, -leg_h/2))
-    
-    return BRepBuilderAPI_Transform(double_angle, center_trsf, True).Shape()
+        right = _translate_section(left, 0, t + w_horiz, 0)
+        return BRepAlgoAPI_Fuse(BRepAlgoAPI_Fuse(web, left).Shape(), right).Shape()
+
+    z_bot = -h_vert / 2.0
+    z_flange_bot = h_vert / 2.0 - t
+    z_top = h_vert / 2.0
+    y_outer_pos = t_half + w_horiz
+    y_outer_neg = -(t_half + w_horiz)
+
+    poly = BRepBuilderAPI_MakePolygon()
+    poly.Add(gp_Pnt(x0, -t_half, z_bot))
+    poly.Add(gp_Pnt(x0, t_half, z_bot))
+    poly.Add(gp_Pnt(x0, t_half, z_flange_bot))
+    poly.Add(gp_Pnt(x0, y_outer_pos, z_flange_bot))
+    poly.Add(gp_Pnt(x0, y_outer_pos, z_top))
+    poly.Add(gp_Pnt(x0, y_outer_neg, z_top))
+    poly.Add(gp_Pnt(x0, y_outer_neg, z_flange_bot))
+    poly.Add(gp_Pnt(x0, -t_half, z_flange_bot))
+    return _extrude_section(poly, length)
 
 
 def _create_double_channel_section(length, depth, flange_width, web_thickness, flange_thickness):
@@ -289,29 +293,21 @@ def _create_double_channel_section(length, depth, flange_width, web_thickness, f
     Returns:
         TopoDS_Shape: The double channel section centered at origin
     """
-    # Create base channel
+    # The two channel webs share a face. Their union is a wider I profile.
+    if _has_open_flange_recess(depth, flange_width, web_thickness, flange_thickness):
+        return _create_i_section(
+            length, depth, 2 * flange_width, 2 * web_thickness, flange_thickness
+        )
+
     base = _create_channel_section(length, depth, flange_width, web_thickness, flange_thickness)
-    
-    # Create mirrored channel
     mirror = gp_Trsf()
     mirror.SetMirror(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 1, 0)))
     mirrored = BRepBuilderAPI_Transform(base, mirror, True).Shape()
-    
-    # Spacing between channels
-    offset = flange_width / 2
-    
-    # Position first channel
-    t1 = gp_Trsf()
-    t1.SetTranslation(gp_Vec(0, +offset, 0))
-    c1 = BRepBuilderAPI_Transform(base, t1, True).Shape()
-    
-    # Position second channel
-    t2 = gp_Trsf()
-    t2.SetTranslation(gp_Vec(0, -offset, 0))
-    c2 = BRepBuilderAPI_Transform(mirrored, t2, True).Shape()
-    
-    # Fuse both channels
-    return BRepAlgoAPI_Fuse(c1, c2).Shape()
+    offset = flange_width / 2.0
+    return BRepAlgoAPI_Fuse(
+        _translate_section(base, 0, offset, 0),
+        _translate_section(mirrored, 0, -offset, 0),
+    ).Shape()
 
 
 def _create_i_section(length, depth, flange_width, web_thickness, flange_thickness):
@@ -328,38 +324,33 @@ def _create_i_section(length, depth, flange_width, web_thickness, flange_thickne
     Returns:
         TopoDS_Shape: The I-section centered at origin
     """
-    # Create web
-    web = BRepPrimAPI_MakeBox(length, web_thickness, depth).Shape()
-    
-    # Create bottom flange
-    bottom = BRepPrimAPI_MakeBox(length, flange_width, flange_thickness).Shape()
-    
-    # Create top flange
-    top = BRepPrimAPI_MakeBox(length, flange_width, flange_thickness).Shape()
-    
-    # Position top flange
-    trsf_top = gp_Trsf()
-    trsf_top.SetTranslation(
-        gp_Vec(0, -flange_width / 2 + web_thickness / 2, depth - flange_thickness)
-    )
-    top = BRepBuilderAPI_Transform(top, trsf_top, True).Shape()
-    
-    # Position bottom flange
-    trsf_bot = gp_Trsf()
-    trsf_bot.SetTranslation(
-        gp_Vec(0, -flange_width / 2 + web_thickness / 2, 0)
-    )
-    bottom = BRepBuilderAPI_Transform(bottom, trsf_bot, True).Shape()
-    
-    # Fuse all components
-    i_section = BRepAlgoAPI_Fuse(web, bottom).Shape()
-    i_section = BRepAlgoAPI_Fuse(i_section, top).Shape()
-    
-    # Center the section at origin
-    trsf = gp_Trsf()
-    trsf.SetTranslation(gp_Vec(-length / 2, -web_thickness / 2, -depth / 2))
-    
-    return BRepBuilderAPI_Transform(i_section, trsf, True).Shape()
+    if not _has_open_flange_recess(depth, flange_width, web_thickness, flange_thickness):
+        section = _fuse_web_and_flanges(
+            length, depth, flange_width, web_thickness, flange_thickness,
+            (web_thickness - flange_width) / 2,
+        )
+        return _translate_section(section, -length / 2, -web_thickness / 2, -depth / 2)
+
+    bf = flange_width / 2.0
+    d = depth / 2.0
+    tw = web_thickness / 2.0
+    tf = flange_thickness
+    x0 = -length / 2.0
+
+    poly = BRepBuilderAPI_MakePolygon()
+    poly.Add(gp_Pnt(x0, -bf, -d))
+    poly.Add(gp_Pnt(x0, bf, -d))
+    poly.Add(gp_Pnt(x0, bf, -d + tf))
+    poly.Add(gp_Pnt(x0, tw, -d + tf))
+    poly.Add(gp_Pnt(x0, tw, d - tf))
+    poly.Add(gp_Pnt(x0, bf, d - tf))
+    poly.Add(gp_Pnt(x0, bf, d))
+    poly.Add(gp_Pnt(x0, -bf, d))
+    poly.Add(gp_Pnt(x0, -bf, d - tf))
+    poly.Add(gp_Pnt(x0, -tw, d - tf))
+    poly.Add(gp_Pnt(x0, -tw, -d + tf))
+    poly.Add(gp_Pnt(x0, -bf, -d + tf))
+    return _extrude_section(poly, length)
 
 
 # UTILITY FUNCTIONS
@@ -468,45 +459,32 @@ def _create_diagonal_member(p1, p2, thickness, section_type, dims, roll_sign):
     Returns:
         TopoDS_Shape: The positioned bracing member
     """
-    # Calculate vector and length
     vec = gp_Vec(p1, p2)
     length = vec.Magnitude()
-    
-    # Create section at origin
+    if length <= precision.Confusion():
+        raise ValueError("Bracing member endpoints must be separated")
+
     solid = _create_section_solid(section_type, length, thickness, dims)
-    
-    # Calculate rotation to align with target vector
-    x_dir = gp_Dir(1, 0, 0)  # Initial direction
-    tgt = gp_Dir(vec)         # Target direction
-    
-    axis = gp_Vec(x_dir.Crossed(tgt))
-    angle = x_dir.Angle(tgt)
-    
-    # Apply rotation if needed
-    if axis.Magnitude() > 1e-6:
-        tr = gp_Trsf()
-        tr.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(axis)), angle)
-        solid = BRepBuilderAPI_Transform(solid, tr, True).Shape()
-    
-    # Apply roll angle for proper orientation
+    x_dir = gp_Dir(1, 0, 0)
+    target = gp_Dir(vec)
+    axis = gp_Vec(x_dir).Crossed(gp_Vec(target))
+    alignment = gp_Trsf()
+    if axis.Magnitude() > 1e-12:
+        alignment.SetRotation(gp_Ax1(gp_Pnt(), gp_Dir(axis)), x_dir.Angle(target))
+    elif x_dir.Dot(target) < 0:
+        alignment.SetRotation(gp_Ax1(gp_Pnt(), gp_Dir(0, 0, 1)), math.pi)
+
+    placement = gp_Trsf()
     roll = _get_roll_angle(section_type, roll_sign)
     if abs(roll) > 1e-6:
-        tr = gp_Trsf()
-        tr.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), tgt), roll)
-        solid = BRepBuilderAPI_Transform(solid, tr, True).Shape()
-    
-    # Calculate midpoint
-    mid = gp_Pnt(
+        placement.SetRotation(gp_Ax1(gp_Pnt(), target), roll)
+    placement.Multiply(alignment)
+    placement.SetTranslationPart(gp_Vec(
         (p1.X() + p2.X()) / 2,
         (p1.Y() + p2.Y()) / 2,
-        (p1.Z() + p2.Z()) / 2
-    )
-    
-    # Translate to position
-    tr = gp_Trsf()
-    tr.SetTranslation(gp_Vec(mid.X(), mid.Y(), mid.Z()))
-    
-    return BRepBuilderAPI_Transform(solid, tr, True).Shape()
+        (p1.Z() + p2.Z()) / 2,
+    ))
+    return BRepBuilderAPI_Transform(solid, placement, False).Shape()
 
 
 # BRACING PATTERN FUNCTIONS
@@ -860,7 +838,7 @@ def build_cross_bracings(
                 if not dz: return tagged
                 trsf = gp_Trsf()
                 trsf.SetTranslation(gp_Vec(0, 0, dz))
-                return [(role, BRepBuilderAPI_Transform(s, trsf, True).Shape())
+                return [(role, BRepBuilderAPI_Transform(s, trsf, False).Shape())
                         for role, s in tagged]
 
             def _collect(tagged, dz, component, pair_id):

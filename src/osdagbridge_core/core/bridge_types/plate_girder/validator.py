@@ -5,6 +5,7 @@ Validates Basic and Additional Inputs
 
 from math import isclose, floor, ceil
 
+from osdagbridge_core.core.bridge_components.super_structure.shear_studs.geometry import min_stud_head_diameter
 from osdagbridge_core.core.utils.codes.keyfile import *
 from osdagbridge_core.core.utils.codes.irc5_2015 import IRC5_2015
 from osdagbridge_core.core.utils.common import *
@@ -829,16 +830,18 @@ class BridgeInputValidator:
                 return max_h, f"Stud height must be between {min_h:.0f} mm (4× stud diameter) and {max_h:.0f} mm (deck thickness − 25 mm)."
 
         elif key == KEY_DS_STUD_COUNT:
-            v         = self._to_int(inputs.get(key))
-            d         = self._to_float(inputs.get(KEY_DS_STUD_DIAMETER))
-            flange_m  = self._to_float(inputs.get(KEY_MP_GIRDER_TOP_FLANGE_WIDTH))
-            flange_mm = flange_m * 1000.0 if flange_m is not None else None
-            max_n     = int(ceil((flange_mm - 50.0) / (2.5 * d))) if (flange_mm is not None and d) else None
-            if max_n is not None: max_n = max(max_n, 1)
+            v = self._to_int(inputs.get(key))
+            d = self._to_float(inputs.get(KEY_DS_STUD_DIAMETER))
+            flange_mm = self._to_float(inputs.get(KEY_MP_GIRDER_TOP_FLANGE_WIDTH))
             if v is None: return 1, "No. of studs per section must be an integer value."
             if v < 1:     return 1, "No. of studs per section is outside the practical range allowed in the software."
-            if max_n is not None and v > max_n:
-                return max_n, "No. of studs per section is outside the practical range allowed in the software."
+            if flange_mm is not None and d is not None and d > 0:
+                max_n = max(1, ceil((flange_mm - 50.0) / (2.5 * d)))
+                usable_width = max(0.0, flange_mm - 2 * max(50.0, d))
+                max_nonoverlapping = 1 + floor(usable_width / min_stud_head_diameter(d))
+                max_n = min(max_n, max_nonoverlapping)
+                if v > max_n:
+                    return max_n, "The top flange cannot fit the requested number of shear studs."
 
         elif key == KEY_DS_STUD_TRANSVERSE_SPACING:
             v         = self._to_float(inputs.get(key))

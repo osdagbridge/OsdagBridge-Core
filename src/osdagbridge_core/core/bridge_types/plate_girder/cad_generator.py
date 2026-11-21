@@ -396,7 +396,7 @@ class PlateGirderCADGenerator:
         from OCC.Core.gp import gp_Trsf, gp_Vec
         from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
 
-        def _translate(shape, dx=0, dy=0, dz=0):
+        def _translate(shape, dx=0, dy=0, dz=0, copy_geom=True):
             """
             Translate a shape by the specified offsets.
             
@@ -405,13 +405,14 @@ class PlateGirderCADGenerator:
                 dx: X-offset
                 dy: Y-offset
                 dz: Z-offset
+                copy_geom: Whether to copy the underlying geometry.
                 
             Returns:
                 Translated TopoDS_Shape
             """
             trsf = gp_Trsf()
             trsf.SetTranslation(gp_Vec(dx, dy, dz))
-            return BRepBuilderAPI_Transform(shape, trsf, True).Shape()
+            return BRepBuilderAPI_Transform(shape, trsf, copy_geom).Shape()
         
         def _calculate_skew_offset(lateral_position, reference_position=0):
             """
@@ -610,9 +611,7 @@ class PlateGirderCADGenerator:
 
             # Place shear studs
             for stud in pg.get("shear_studs", []):
-                shear_studs.append(
-                    raw_shear_studs.append(_translate(stud, dx=x_offset, dy=y_offset))
-                )
+                raw_shear_studs.append(_translate(stud, dx=x_offset, dy=y_offset, copy_geom=False))
 
             # Place triangular supports
             for s in pg["supports_tri"]:
