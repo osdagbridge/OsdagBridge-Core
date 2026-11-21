@@ -301,6 +301,130 @@ def populate_section_properties(
     for field, details_key in _SECTION_PROP_FIELDS.items():
         output_dict[make_pair_key(prop_keys[field], pair_id)] = details[details_key]
 
+
+def _plate_thickness_mm(result: dict) -> float:
+    """Gusset thickness Osdag provided for a design result (0 when absent)."""
+    try:
+        return float((result or {}).get("Plate.Thickness") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def designed_profile_context(member_designs: dict, member: str, job_profiles: dict, pair: str) -> dict:
+    """
+    Profile, connected leg and gusset thickness of the Osdag run whose section
+    is reported for ``member`` (tension first, then compression — the same
+    order the designation is picked in). Chords fall back to the shared
+    "chord" run when top and bottom were designed together.
+    """
+    from osdagbridge_core.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
+
+    name = member if (member == "diagonal" or member_designs.get(member)) else "chord"
+    data = member_designs.get(name) or {}
+    fallback = None
+    for force_type in ("tension", "compression"):
+        meta = job_profiles.get((pair, name, force_type))
+        if not meta:
+            continue
+        profile, conn_loc = meta
+        ctx = {
+            "profile": profile,
+            "conn_loc": conn_loc,
+            "plate_thk_mm": _plate_thickness_mm(data.get(force_type)),
+        }
+        if _extract_osdag_summary(data.get(force_type) or {}).get("section"):
+            return ctx
+        fallback = fallback or ctx
+    return fallback or {}
+
+
+def to_double_section(
+    details: dict,
+    profile: Optional[str],
+    conn_loc: Optional[str] = "Long Leg",
+    plate_thk_mm: float = 0.0,
+) -> dict:
+    """
+    Convert single angle/channel ``details`` (from
+    ``PlateGirderBridge._query_crossbracing_section``) into the properties of
+    the back-to-back section Osdag designed, using Osdag's
+    ``BBAngle_Properties`` / ``BBChannel_Properties``.
+
+    Follows Osdag's own convention (compression.py / member.py): the two
+    members are separated by the gusset (gap = plate thickness) except for
+    "Same side of gusset", where they are in contact (gap = 0) and back to
+    back on the other leg. H/B/tw/tF stay those of one member; the Iv/rv/Zv/
+    Zuv slots carry the double section's minor-axis values (z or y, whichever
+    has the smaller r). Single sections are returned unchanged.
+    """
+    profile = str(profile or "")
+    if not details or not profile.startswith("Back to Back"):
+        return details
+
+    from osdag_core.utils.common.Section_Properties_Calculator import (
+        BBAngle_Properties,
+        BBChannel_Properties,
+    )
+
+    out = dict(details)
+    H, B = details["H"] * 1000.0, details["B"] * 1000.0
+    tw, tf = details["tw"] * 1000.0, details["tF"] * 1000.0
+
+    if details["type"] == "CHANNEL" and "Channel" in profile:
+        gap = plate_thk_mm
+        calc = BBChannel_Properties()
+        try:
+            calc.data(details["designation"], "")
+        except Exception:
+            calc = BBChannel_Properties()  # geometric fallback
+        args = (B, tf, H, tw)
+    elif details["type"] == "ANGLE" and "Angle" in profile:
+        leg = conn_loc if conn_loc in ("Long Leg", "Short Leg") else "Long Leg"
+        if "Same side" in profile:
+            gap = 0.0
+            leg = "Short Leg" if leg == "Long Leg" else "Long Leg"
+        else:
+            gap = plate_thk_mm
+        calc = BBAngle_Properties()
+        try:
+            calc.data(_osdag_designation(details["designation"]) or details["designation"], "")
+        except Exception:
+            calc = BBAngle_Properties()  # geometric fallback
+        args = (H, B, tw, leg)
+    else:
+        return details
+
+    z = {
+        "I":  calc.calc_MomentOfAreaZ(*args, gap),
+        "r":  calc.calc_RogZ(*args, gap),
+        "Z":  calc.calc_ElasticModulusZz(*args, gap),
+        "Zp": calc.calc_PlasticModulusZpz(*args, gap),
+    }
+    y = {
+        "I":  calc.calc_MomentOfAreaY(*args, gap),
+        "r":  calc.calc_RogY(*args, gap),
+        "Z":  calc.calc_ElasticModulusZy(*args, gap),
+        "Zp": calc.calc_PlasticModulusZpy(*args, gap),
+    }
+    # "v" is the minor axis (rv is reported as r_min and governs slenderness,
+    # as Osdag's min(rad_y, rad_z)): whichever of z/y has the smaller r.
+    v = y if y["r"] < z["r"] else z
+    out.update({
+        "profile": profile,
+        "gap_mm":  gap,
+        "M":   2.0 * details["M"],
+        "A":   calc.calc_Area(*args),
+        "Iz":  z["I"],
+        "rz":  z["r"],
+        "Zz":  z["Z"],
+        "Zuz": z["Zp"],
+        "Iv":  v["I"],
+        "rv":  v["r"],
+        "Zv":  v["Z"],
+        "Zuv": v["Zp"],
+    })
+    return out
+
 # ===========================================================================
 class CrossBracingForces:
     """
@@ -780,6 +904,7 @@ class CrossBracingForces:
             design_dict_tension_welded,
         )
 
+        self._job_profiles = {}
         if not forces_dict or not forces_dict.get("pairs"):
             return {}
 
@@ -851,6 +976,13 @@ class CrossBracingForces:
                     if connection == "welded" and d.get("Member.Profile") == "Back to Back Angles":
                         d["Member.Profile"] = "Back to Back Angles - Same side of gusset"
                     jobs.append((pair, member, "compression", d))
+
+        # Profile each job was designed as, so section properties can be
+        # reported for the double section when it is back-to-back.
+        self._job_profiles = {
+            (p, m, f): (d.get("Member.Profile"), d.get("Conn_Location"))
+            for p, m, f, d in jobs
+        }
 
         if not jobs:
             return {}
@@ -987,6 +1119,7 @@ class CrossBracingForces:
         from osdagbridge_core.core.utils.logger import bridge_logger
         bridge_logger.check_cancel()
         pair_designs = self.run_member_designs(forces_dict, custom_sections=custom_sections)
+        job_profiles = getattr(self, "_job_profiles", {})
         bridge.output_dict["crossbracing_forces_dict"] = forces_dict
 
         from osdagbridge_core.core.bridge_types.plate_girder.results_data import (
@@ -1056,7 +1189,10 @@ class CrossBracingForces:
 
             if diag_des:
                 bridge.output_dict[make_pair_key(KEY_MP_CB_BRACING_SECTION_DESIGNATION, pair_id)] = diag_des
-                diag_details = bridge._query_crossbracing_section(diag_des)
+                diag_details = to_double_section(
+                    bridge._query_crossbracing_section(diag_des),
+                    **designed_profile_context(member_designs, "diagonal", job_profiles, pair),
+                )
                 if diag_details:
                     populate_section_properties(
                         bridge.output_dict, make_pair_key, pair_id, diag_details,
@@ -1070,7 +1206,10 @@ class CrossBracingForces:
 
             top_details = None
             if top_chord_enabled and top_chord_des:
-                top_details = bridge._query_crossbracing_section(top_chord_des)
+                top_details = to_double_section(
+                    bridge._query_crossbracing_section(top_chord_des),
+                    **designed_profile_context(member_designs, "top_chord", job_profiles, pair),
+                )
                 if top_details:
                     bridge.output_dict[make_pair_key(KEY_MP_CB_TOP_CHORD_SECTION_DESIG, pair_id)] = top_chord_des
                     populate_section_properties(
@@ -1085,7 +1224,10 @@ class CrossBracingForces:
 
             if bottom_chord_enabled and bottom_chord_des:
                 bc_details = top_details if (top_chord_des == bottom_chord_des and top_details) \
-                             else bridge._query_crossbracing_section(bottom_chord_des)
+                             else to_double_section(
+                                 bridge._query_crossbracing_section(bottom_chord_des),
+                                 **designed_profile_context(member_designs, "bottom_chord", job_profiles, pair),
+                             )
                 if bc_details:
                     bridge.output_dict[make_pair_key(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, pair_id)] = bottom_chord_des
                     populate_section_properties(
@@ -1511,6 +1653,11 @@ class EndDiaphragmForces:
                             d["Member.Profile"] = "Back to Back Angles - Same side of gusset"
                         jobs.append((pair, member, "compression", d))
 
+                ed_job_profiles = {
+                    (p, m, f): (d.get("Member.Profile"), d.get("Conn_Location"))
+                    for p, m, f, d in jobs
+                }
+
                 if jobs:
                     cpu_count = __import__("os").cpu_count() or 4
                     max_workers = min(cpu_count, len(jobs))
@@ -1563,7 +1710,10 @@ class EndDiaphragmForces:
                 # Populate diagonal properties
                 if diag_des:
                     bridge.output_dict[make_pair_key(KEY_MP_ED_BRACING_SECTION_DESIGNATION, pair_id)] = diag_des
-                    diag_details = bridge._query_crossbracing_section(diag_des)
+                    diag_details = to_double_section(
+                        bridge._query_crossbracing_section(diag_des),
+                        **designed_profile_context(member_designs, "diagonal", ed_job_profiles, pair),
+                    )
                     if diag_details:
                         populate_section_properties(
                             bridge.output_dict, make_pair_key, pair_id, diag_details,
@@ -1576,7 +1726,10 @@ class EndDiaphragmForces:
                 # Populate chords
                 if top_chord_enabled and top_chord_des:
                     bridge.output_dict[make_pair_key(KEY_MP_ED_TOP_CHORD_SECTION_DESIG, pair_id)] = top_chord_des
-                    chord_details = bridge._query_crossbracing_section(top_chord_des)
+                    chord_details = to_double_section(
+                        bridge._query_crossbracing_section(top_chord_des),
+                        **designed_profile_context(member_designs, "top_chord", ed_job_profiles, pair),
+                    )
                     if chord_details:
                         populate_section_properties(
                             bridge.output_dict, make_pair_key, pair_id, chord_details,
@@ -1587,7 +1740,10 @@ class EndDiaphragmForces:
 
                 if bottom_chord_enabled and bottom_chord_des:
                     bridge.output_dict[make_pair_key(KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG, pair_id)] = bottom_chord_des
-                    chord_details = bridge._query_crossbracing_section(bottom_chord_des)
+                    chord_details = to_double_section(
+                        bridge._query_crossbracing_section(bottom_chord_des),
+                        **designed_profile_context(member_designs, "bottom_chord", ed_job_profiles, pair),
+                    )
                     if chord_details:
                         populate_section_properties(
                             bridge.output_dict, make_pair_key, pair_id, chord_details,
