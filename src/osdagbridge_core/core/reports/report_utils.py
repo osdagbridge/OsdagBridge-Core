@@ -53,6 +53,9 @@ from osdagbridge_core.utils.common import (
     KEY_SD_HIGH_SHEAR,
     KEY_SD_MN_AXIAL,
     KEY_SD_MN_MOMENT,
+    KEY_SD_STIFF_INT_THICK_REQ,
+    KEY_SD_STIFF_INT_SPACING_REQ,
+    KEY_SD_STIFF_END_THICK_REQ,
     KEY_TS_NO_OF_GIRDERS,
 )
 
@@ -180,7 +183,7 @@ def _stored_stiffener_values(record):
 
 
 def get_girder_report_details(backend):
-    """Fetch missing details for Tables 5.2, 5.4-5.6 and 5.8 from the existing engine."""
+    """Fetch missing details for Tables 5.2, 5.4-5.8 from the existing engine."""
     # Pass these details through the report payload so output_dict stays unchanged.
     results = {}
     design_results = backend.output_dict.get("design_results") or {}
@@ -236,6 +239,13 @@ def get_girder_report_details(backend):
                 if detail.get("Fq_kN") is not None and detail.get("Fqd_kN") is not None:
                     values[KEY_SD_IS_FQ] = detail["Fq_kN"]
                     values[KEY_SD_IS_FQD] = detail["Fqd_kN"]
+
+        # Table 5.7 minimum stiffener sizes; they depend only on the girder section and bearing reaction.
+        capacity = capacity_for((record.get("demand") or {}).get("governing_combination"))
+        if capacity is not None:
+            values[KEY_SD_STIFF_INT_THICK_REQ] = capacity.details.get("intermediate_stiffener", {}).get("tq_req_mm", "NA")
+            values[KEY_SD_STIFF_INT_SPACING_REQ] = capacity.details.get("intermediate_stiffener", {}).get("c_req_min_mm", "NA")
+            values[KEY_SD_STIFF_END_THICK_REQ] = capacity.details.get("bearing_stiffener", {}).get("tq_req_bearing_mm", "NA")
     return results
 
 
