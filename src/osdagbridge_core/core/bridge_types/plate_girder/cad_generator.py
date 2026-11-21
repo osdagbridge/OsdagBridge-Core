@@ -1036,88 +1036,65 @@ class PlateGirderCADGenerator:
 
     def create3Dcad(self):
         """
-        Collect generated model parts from `self.model_data`, normalize and fuse
-        them into a single TopoDS_Shape suitable for export (STEP/IGS/STL/BREP).
+        Collect the canonical generated parts into an export compound.
 
         Returns:
             TopoDS_Shape or None
         """
-
-
         if not getattr(self, 'model_data', None):
             return None
 
-   
-
-        # Local imports to avoid heavy deps at module import time
-        from OCC.Core.TopoDS import TopoDS_Shape
-        from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
-        from OCC.Core.TopExp import TopExp_Explorer
-        from OCC.Core.TopAbs import TopAbs_SOLID
-
-        def _flatten(obj):
-            """Flatten nested containers/dicts into a list of elements."""
-            if obj is None:
-                return []
-            if isinstance(obj, dict):
-                out = []
-                for v in obj.values():
-                    out.extend(_flatten(v))
-                return out
-            if isinstance(obj, (list, tuple)):
-                out = []
-                for i in obj:
-                    out.extend(_flatten(i))
-                return out
-            return [obj]
-
-        def _explode_compound(shape):
-            """If a compound contains many solids, return the contained solids."""
-            solids = []
-            try:
-                exp = TopExp_Explorer(shape, TopAbs_SOLID)
-                while exp.More():
-                    solids.append(exp.Current())
-                    exp.Next()
-            except Exception:
-                # Not a compound or explorer failed; return original
-                return [shape]
-
-            return solids if solids else [shape]
-
-        # Collect shapes from model_data, excluding support geometry from export.
-        shapes = []
-        for key, v in self.model_data.items():
-            if key in {"supports", "supports_tri", "supports_cyl"}:
-                continue
-            shapes.extend(_flatten(v))
-
-        # Keep only TopoDS_Shape instances
-        shapes = [s for s in shapes if isinstance(s, TopoDS_Shape)]
-
-        if not shapes:
-            return None
-
-        # Explode compounds into solids
-        normalized = []
-        for s in shapes:
-            normalized.extend(_explode_compound(s))
-
-        shapes = normalized
-
         from OCC.Core.BRep import BRep_Builder
-        from OCC.Core.TopoDS import TopoDS_Compound
+        from OCC.Core.TopoDS import TopoDS_Compound, TopoDS_Shape
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_COMPOUND, TopAbs_SOLID
 
+        def _export_shapes(obj):
+            if isinstance(obj, dict):
+                for value in obj.values():
+                    yield from _export_shapes(value)
+            elif isinstance(obj, (list, tuple)):
+                for value in obj:
+                    yield from _export_shapes(value)
+            elif isinstance(obj, TopoDS_Shape) and not obj.IsNull():
+                shape_type = obj.ShapeType()
+                if shape_type == TopAbs_SOLID:
+                    yield obj
+                    return
+                explorer = TopExp_Explorer(obj, TopAbs_SOLID)
+                if not explorer.More():
+                    if shape_type != TopAbs_COMPOUND or obj.NbChildren():
+                        yield obj
+                    return
+                while explorer.More():
+                    yield explorer.Current()
+                    explorer.Next()
+
+        # Canonical export whitelist: primary structural components only.
+        # Excludes duplicate hover tracking dictionaries, diagnostic sub-lists,
+        # support geometry, and cosmetic surface textures.
+        CANONICAL_EXPORT_KEYS = (
+            "girders",               # Primary webs and flanges
+            "stiffeners",            # Primary stiffener compound
+            "cross_bracings",        # Primary cross bracing compound
+            "deck_slab",             # Main deck slab
+            "footpaths",             # Footpath slabs
+            "crash_barriers",        # Crash barrier posts/kerb/spacers
+            "crash_barrier_w_beams", # W-beam rails
+            "median_barriers",       # Median kerb & posts
+            "median_w_beams",        # Median W-beam rails
+            "railings",              # Railings
+            "shear_studs"            # Shear studs
+        )
 
         builder = BRep_Builder()
         compound = TopoDS_Compound()
-
         builder.MakeCompound(compound)
 
-        for shp in shapes:
-            builder.Add(compound, shp)
-
-        return compound
+        for key in CANONICAL_EXPORT_KEYS:
+            for shape in _export_shapes(self.model_data.get(key)):
+                builder.Add(compound, shape)
+        return compound if compound.NbChildren() else None
 
 
     def display_3dModel(self, component):
