@@ -790,7 +790,8 @@ def _extract_osdag_summary(result: dict) -> dict:
         "section":     _first("section_size.designation", "Optimum.Designation", "Section", "Designation"),
         "capacity_kN": _first("Member.tension_capacity", "Member.compression_capacity", "Member.capacity", "Design.Strength", "Capacity", as_float=True),
         "efficiency":  _first("Member.efficiency", "Optimum.UR", "Efficiency", "UR", as_float=True),
-        "slenderness": _first("Member.Slenderness", "Member.slenderness", "Slenderness", as_float=True),
+        # Struts Welded reports the slenderness ratio as "ESR" instead of "Member.Slenderness".
+        "slenderness": _first("Member.Slenderness", "Member.slenderness", "Slenderness", "ESR", as_float=True),
         "connection":  "Welded" if "Weld.Type" in result else "Bolted",
         "design_status": bool(status) if status is not None else None,
     }
