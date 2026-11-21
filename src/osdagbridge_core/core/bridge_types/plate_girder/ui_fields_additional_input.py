@@ -588,7 +588,7 @@ _LIVE_LOAD_TAB_SCHEMA = {
                         "id":              KEY_BL_IRC_CLASS_SV,
                         "label":           "Class SV",
                         "type":            TYPE_CHECKBOX,
-                        "default_checked": True,
+                        "default_checked": False,
                         "label_first":     True,
                     }]
                 },

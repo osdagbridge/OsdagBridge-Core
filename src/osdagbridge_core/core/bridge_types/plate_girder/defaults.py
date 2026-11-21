@@ -325,7 +325,7 @@ def _update_loading_tab_defaults(input_dict: dict) -> None:
     _update(KEY_LL_IRC_CLASS_FATIGUE,       True)
     # Braking load for Class SV is opt-in (own checkbox); seed to match its
     # schema default_checked so the table matches the displayed checkbox.
-    _update(KEY_BL_IRC_CLASS_SV,            True)
+    _update(KEY_BL_IRC_CLASS_SV,            False)
     _update(KEY_LL_CUSTOM_VEHICLES,         [])
     _update(KEY_LL_ECCENTRICITY,            "1.2")
     _update(KEY_LL_FOOTPATH_PRESSURE_MODE,  "As per IRC 6")
