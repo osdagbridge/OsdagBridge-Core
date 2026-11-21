@@ -354,8 +354,8 @@ def to_double_section(
     members are separated by the gusset (gap = plate thickness) except for
     "Same side of gusset", where they are in contact (gap = 0) and back to
     back on the other leg. H/B/tw/tF stay those of one member; the Iv/rv/Zv/
-    Zuv slots carry the double section's y-axis values, as they already do
-    for channels. Single sections are returned unchanged.
+    Zuv slots carry the double section's minor-axis values (z or y, whichever
+    has the smaller r). Single sections are returned unchanged.
     """
     profile = str(profile or "")
     if not details or not profile.startswith("Back to Back"):
@@ -394,20 +394,34 @@ def to_double_section(
     else:
         return details
 
-    area = calc.calc_Area(*args)
+    z = {
+        "I":  calc.calc_MomentOfAreaZ(*args, gap),
+        "r":  calc.calc_RogZ(*args, gap),
+        "Z":  calc.calc_ElasticModulusZz(*args, gap),
+        "Zp": calc.calc_PlasticModulusZpz(*args, gap),
+    }
+    y = {
+        "I":  calc.calc_MomentOfAreaY(*args, gap),
+        "r":  calc.calc_RogY(*args, gap),
+        "Z":  calc.calc_ElasticModulusZy(*args, gap),
+        "Zp": calc.calc_PlasticModulusZpy(*args, gap),
+    }
+    # "v" is the minor axis (rv is reported as r_min and governs slenderness,
+    # as Osdag's min(rad_y, rad_z)): whichever of z/y has the smaller r.
+    v = y if y["r"] < z["r"] else z
     out.update({
         "profile": profile,
         "gap_mm":  gap,
         "M":   2.0 * details["M"],
-        "A":   area,
-        "Iz":  calc.calc_MomentOfAreaZ(*args, gap),
-        "Iv":  calc.calc_MomentOfAreaY(*args, gap),
-        "rz":  calc.calc_RogZ(*args, gap),
-        "rv":  calc.calc_RogY(*args, gap),
-        "Zz":  calc.calc_ElasticModulusZz(*args, gap),
-        "Zv":  calc.calc_ElasticModulusZy(*args, gap),
-        "Zuz": calc.calc_PlasticModulusZpz(*args, gap),
-        "Zuv": calc.calc_PlasticModulusZpy(*args, gap),
+        "A":   calc.calc_Area(*args),
+        "Iz":  z["I"],
+        "rz":  z["r"],
+        "Zz":  z["Z"],
+        "Zuz": z["Zp"],
+        "Iv":  v["I"],
+        "rv":  v["r"],
+        "Zv":  v["Z"],
+        "Zuv": v["Zp"],
     })
     return out
 
