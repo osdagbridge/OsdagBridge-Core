@@ -22,7 +22,9 @@ CREATE TABLE temperature_data (
     station VARCHAR(100) NOT NULL,
     max_temp DECIMAL(5, 2),
     min_temp DECIMAL(5, 2),
-    PRIMARY KEY (state, station)
+    PRIMARY KEY (state, station),
+    FOREIGN KEY (state, station) REFERENCES stations(state, station)
+        ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 -- Table 3: Zone Data (Child Table)
@@ -31,7 +33,9 @@ CREATE TABLE zone_data (
     station VARCHAR(100) NOT NULL,
     zone VARCHAR(10) NOT NULL,
     z_value DECIMAL(4, 2) NOT NULL,
-    PRIMARY KEY (state, station)
+    PRIMARY KEY (state, station),
+    FOREIGN KEY (state, station) REFERENCES stations(state, station)
+        ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 -- Table 4: Windspeed Data (Child Table)
@@ -39,7 +43,9 @@ CREATE TABLE windspeed_data (
     state VARCHAR(100) NOT NULL,
     station VARCHAR(100) NOT NULL,
     wind_speed INTEGER NOT NULL,
-    PRIMARY KEY (state, station)
+    PRIMARY KEY (state, station),
+    FOREIGN KEY (state, station) REFERENCES stations(state, station)
+        ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 -- Create indexes for better query performance
@@ -102,7 +108,7 @@ INSERT INTO stations (state, station, latitude, longitude) VALUES ('Bihar', 'Dum
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Bihar', 'Gaya', 24.7914, 85.0002);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Bihar', 'Hazaribagh', 23.9925, 85.3637);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Bihar', 'Motihari', 26.65, 84.9167);
-INSERT INTO stations (state, station, latitude, longitude) VALUES ('Bihar', 'Mungher', 25.3708, 86.4633);
+INSERT INTO stations (state, station, latitude, longitude) VALUES ('Bihar', 'Munger', 25.3708, 86.4633);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Bihar', 'Muzaffarpur', 26.1225, 85.3906);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Bihar', 'Patna', 25.5941, 85.0919);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Bihar', 'Purnea', 25.7771, 87.4753);
@@ -125,7 +131,7 @@ INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'B
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Baroda', 22.3072, 73.1812);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Baroda (A)', 22.3072, 73.1812);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Bhavnagar (A)', 21.7645, 72.1519);
-INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Bhuj (Rudramata) (A)', 23.2419, 69.6669);
+INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Bhuj', 23.2419, 69.6669);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Deesa', 24.2575, 72.1908);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Dohad', 22.8333, 74.25);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Dwarka', 22.2442, 68.9685);
@@ -136,7 +142,7 @@ INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'N
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'New Kandla', 23.0333, 70.2167);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Okha', 22.4672, 69.07);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Porbandar (A)', 21.6417, 69.6293);
-INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Rajkot (A)', 22.3039, 70.8022);
+INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Rajkot', 22.3039, 70.8022);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Surat', 21.1702, 72.8311);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Vadodara', 22.3072, 73.1812);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Gujarat', 'Vallabh Vidyanagar', 22.5333, 72.9167);
@@ -196,7 +202,7 @@ INSERT INTO stations (state, station, latitude, longitude) VALUES ('Karnataka', 
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Karnataka', 'Mangalore (Bajpe) (A)', 12.9141, 74.883);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Karnataka', 'Mangalore (Panambur)', 12.9262, 74.839);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Karnataka', 'Mercara', 12.421, 75.7382);
-INSERT INTO stations (state, station, latitude, longitude) VALUES ('Karnataka', 'Mysuru', 12.2958, 76.6394);
+INSERT INTO stations (state, station, latitude, longitude) VALUES ('Karnataka', 'Mysore', 12.2958, 76.6394);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Karnataka', 'Raichur', 16.212, 77.3439);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Karnataka', 'Shimoga', 13.9299, 75.5681);
 INSERT INTO stations (state, station, latitude, longitude) VALUES ('Karnataka', 'Shirali', 14.0167, 74.5333);
@@ -738,7 +744,7 @@ INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Odish
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Odisha', 'Balasore', 46.7, 6.7);
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Odisha', 'Baripada', 48.3, 6.5);
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Odisha', 'Bhawanipatna', 48.5, 4.5);
-INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Odisha', 'Bhubaneshwar', 46.5, 8.6);
+INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Odisha', 'Bhubaneswar', 46.5, 8.6);
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Odisha', 'Bolangir', 49.0, 1.6);
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Odisha', 'Chandbali', 46.7, 5.1);
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Odisha', 'Cuttack', 47.7, 5.8);
@@ -752,7 +758,7 @@ INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Odish
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Odisha', 'Sundergarh', 47.6, 1.6);
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Odisha', 'Titlagarh', 50.1, 4.0);
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Pondicherry', 'Pondicherry', 45.5, 15.1);
-INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Pondicherry', 'Pondicherry (M.O)', 43.1, 16.2);
+INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Pondicherry', '(M.O)', 43.1, 16.2);
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Punjab', 'Amritsar', 47.8, -3.6);
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Punjab', 'Kapurthala', 47.7, 0.0);
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Punjab', 'Ludhiana', 46.6, -1.7);
@@ -811,7 +817,7 @@ INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Tamil
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Tamil Nadu', 'Pamban', 38.9, 17.0);
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Tamil Nadu', 'Port Novo', 43.5, 13.0);
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Tamil Nadu', 'Salem', 42.8, 11.1);
-INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Tamil Nadu', 'Tanjavur', 46.2, 16.6);
+INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Tamil Nadu', 'Thanjavur', 46.2, 16.6);
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Tamil Nadu', 'Tiruchirappalli', 43.9, 13.9);
 --INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Tamil Nadu', 'Tiruchi', 42.4, 16.0);
 INSERT INTO temperature_data (state, station, max_temp, min_temp) VALUES ('Tamil Nadu', 'Tiruppattur', 46.3, 10.2);
@@ -908,8 +914,7 @@ INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Assam', 'Tezpur',
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Bihar', 'Barauni', 'IV', 0.24);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Bihar', 'Darbhanga', 'V', 0.36);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Bihar', 'Gaya', 'III', 0.16);
-INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Bihar', 'Monghyr', 'IV', 0.24);
-INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Bihar', 'Mungher', 'IV', 0.24);
+INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Bihar', 'Munger', 'IV', 0.24);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Bihar', 'Patna', 'IV', 0.24);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Chandigarh', 'Chandigarh', 'IV', 0.24);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Chhattisgarh', 'Bhilai', 'II', 0.1);
@@ -941,11 +946,9 @@ INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Karnataka', 'Chit
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Karnataka', 'Dharwad', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Karnataka', 'Gulbarga', 'II', 0.1);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Karnataka', 'Karwar', 'III', 0.16);
-INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Karnataka', 'Mangalore', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Karnataka', 'Mangalore (Bajpe) (A)', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Karnataka', 'Mangalore (Panambur)', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Karnataka', 'Mysore', 'II', 0.1);
-INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Karnataka', 'Mysuru', 'II', 0.1);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Kerala', 'Kozhikode', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Kerala', 'Cochin (N.A.S.)/ Kochi', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Kerala', 'Kochi', 'III', 0.16);
@@ -964,7 +967,6 @@ INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Maharashtra', 'Mu
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Maharashtra', 'Nagpur (Mayo-Hospital)', 'II', 0.1);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Maharashtra', 'Nagpur (Sonegaon)', 'II', 0.1);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Maharashtra', 'Nashik', 'III', 0.16);
-INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Maharashtra', 'Nasik', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Maharashtra', 'Osmanabad', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Maharashtra', 'Pune', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Maharashtra', 'Solapur', 'III', 0.16);
@@ -1001,13 +1003,11 @@ INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Rajasthan', 'Kota
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Rajasthan', 'Udaipur', 'II', 0.1);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Rajasthan', 'Udaipur (Dabok) (A)', 'II', 0.1);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Sikkim', 'Gangtok', 'IV', 0.24);
-INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Tamil Nadu', 'Chennai', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Tamil Nadu', 'Chennai (Minambakkam)', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Tamil Nadu', 'Chennai (Nungambakkam)', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Tamil Nadu', 'Coimbatore', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Tamil Nadu', 'Cuddalore', 'III', 0.16);
-INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Tamil Nadu', 'Dharmapuri', 'III', 0.16);
-INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Tamil Nadu', 'Kalapakkam', 'III', 0.16);
+INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Tamil Nadu', 'Dharmapuri', 'III', 016); 
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Tamil Nadu', 'Kalpakkam', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Tamil Nadu', 'Kanchipuram', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Tamil Nadu', 'Madurai', 'II', 0.1);
@@ -1019,7 +1019,7 @@ INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Tamil Nadu', 'Tir
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Tamil Nadu', 'Tiruvannamalai', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Tamil Nadu', 'Vellore', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Telangana', 'Hyderabad', 'II', 0.1);
-INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Telangana', 'Nagarjunasagar', 'II', 0.1);
+--INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Telangana', 'Nagarjunasagar', 'II', 0.1);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Uttar Pradesh', 'Agra', 'III', 0.16);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Uttar Pradesh', 'Allahabad', 'II', 0.1);
 INSERT INTO zone_data (state, station, zone, z_value) VALUES ('Uttar Pradesh', 'Bahraich', 'IV', 0.24);
@@ -1077,10 +1077,9 @@ INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Karnataka', 'Be
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Karnataka', 'Bengaluru(A)', 33);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Karnataka', 'Mangalore (Bajpe) (A)', 39);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Karnataka', 'Mangalore (Panambur)', 39);
-INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Karnataka', 'Mysuru', 33);
+INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Karnataka', 'Mysore', 33);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Kerala', 'Kozhikode', 39);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Kerala', 'Thiruvananthapuram', 39);
-INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Kerala', 'Trivandrum', 39);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Ladakh', 'Leh', 50);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Lakshadweep', 'Lakshadweep', 39);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Madhya Pradesh', 'Bagratawa', 47);
@@ -1100,7 +1099,7 @@ INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('New Delhi', 'Sa
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('New Delhi', 'Delhi', 47);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('New Delhi', 'Palam (A)', 47);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Odisha', 'Bhawanipatna', 47);
-INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Odisha', 'Bhubaneshwar', 50);
+INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Odisha', 'Bhubaneswar', 50);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Odisha', 'Cuttack', 50);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Odisha', 'Rourkela', 39);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Pondicherry', 'Puducherry', 50);
@@ -1121,7 +1120,6 @@ INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Sikkim', 'Gangt
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Tamil Nadu', 'Chennai (Minambakkam)', 50);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Tamil Nadu', 'Chennai (Nungambakkam)', 50);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Tamil Nadu', 'Coimbatore', 39);
-INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Tamil Nadu', 'Madras', 50);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Tamil Nadu', 'Madurai', 39);
 INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Tamil Nadu', 'Madurai (A)', 39);
 --INSERT INTO windspeed_data (state, station, wind_speed) VALUES ('Tamil Nadu', 'Tiruchi', 47);
