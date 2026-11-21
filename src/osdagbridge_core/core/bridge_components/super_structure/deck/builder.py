@@ -42,10 +42,10 @@ Z_GAP = 15
 
 # Utility
 
-def _translate(shape, x=0, y=0, z=0):
+def _translate(shape, x=0, y=0, z=0, copy_geom=True):
     trsf = gp_Trsf()
     trsf.SetTranslation(gp_Vec(x, y, z))
-    return BRepBuilderAPI_Transform(shape, trsf, True).Shape()
+    return BRepBuilderAPI_Transform(shape, trsf, copy_geom).Shape()
 
 
 # Deck width logic
@@ -154,17 +154,6 @@ def _create_deck_slab(
 
 # Texture primitives (exact logic from deck_texture.py)
 
-def _create_dot(x, y, z):
-    dot = BRepPrimAPI_MakeCylinder(DOT_RADIUS, DOT_HEIGHT).Shape()
-    return _translate(dot, x, y, z)
-
-
-def _create_dot_z(x, y, z, up=True):
-    h = DOT_HEIGHT if up else -DOT_HEIGHT
-    dot = BRepPrimAPI_MakeCylinder(DOT_RADIUS, abs(h)).Shape()
-    return _translate(dot, x, y, z)
-
-
 def _create_triangle(x, y, z, rot_axis=None, rot_angle=0):
     size = random.uniform(80, TRI_SIZE_MAX)
 
@@ -187,7 +176,8 @@ def _create_triangle(x, y, z, rot_axis=None, rot_angle=0):
         prism,
         -size / 2,
         -size / 2,
-        -TRI_HEIGHT / 2
+        -TRI_HEIGHT / 2,
+        copy_geom=False,
     )
 
     trsf = gp_Trsf()
@@ -195,7 +185,7 @@ def _create_triangle(x, y, z, rot_axis=None, rot_angle=0):
         trsf.SetRotation(rot_axis, rot_angle)
     trsf.SetTranslationPart(gp_Vec(x, y, z))
 
-    return BRepBuilderAPI_Transform(prism, trsf, True).Shape()
+    return BRepBuilderAPI_Transform(prism, trsf, False).Shape()
 
 
 def _create_triangle_xy(x, y, z, up=True):
@@ -218,7 +208,7 @@ def _create_triangle_xy(x, y, z, up=True):
         face, gp_Vec(0, 0, h)
     ).Shape()
 
-    return _translate(prism, x - size / 2, y - size / 2, z)
+    return _translate(prism, x - size / 2, y - size / 2, z, copy_geom=False)
 
 
 
@@ -231,6 +221,7 @@ def _generate_deck_texture(
     skew_angle=0
 ):
     elements = []
+    dot = BRepPrimAPI_MakeCylinder(DOT_RADIUS, DOT_HEIGHT).Shape()
 
     z_min = Z_GAP
     z_max = deck_thickness - Z_GAP - max(DOT_HEIGHT, TRI_HEIGHT)
@@ -257,10 +248,12 @@ def _generate_deck_texture(
         for _ in range(120):
             x_rand = random.uniform(EDGE_GAP, deck_length - EDGE_GAP)
             elements.append(
-                _create_dot(
+                _translate(
+                    dot,
                     get_skew_x(x_rand, y_local),
                     y_local,
-                    random.uniform(z_min, z_max)
+                    random.uniform(z_min, z_max),
+                    copy_geom=False,
                 )
             )
 
@@ -286,10 +279,12 @@ def _generate_deck_texture(
             y_rand = random.uniform(0.2, deck_width - 0.2)
             y_local = y_rand - deck_width / 2
             elements.append(
-                _create_dot(
+                _translate(
+                    dot,
                     get_skew_x(x_base, y_local),
                     y_local,
-                    random.uniform(z_min, z_max)
+                    random.uniform(z_min, z_max),
+                    copy_geom=False,
                 )
             )
 
@@ -316,11 +311,12 @@ def _generate_deck_texture(
             y_rand = random.uniform(EDGE_GAP, deck_width - EDGE_GAP)
             y_local = y_rand - deck_width / 2
             elements.append(
-                _create_dot_z(
+                _translate(
+                    dot,
                     get_skew_x(x_rand, y_local),
                     y_local,
                     z_local,
-                    up
+                    copy_geom=False,
                 )
             )
 
@@ -339,7 +335,7 @@ def _generate_deck_texture(
 
     # Lift to deck position (already shifted in Y/X above)
     elements = [
-        _translate(e, 0, 0, deck_top_z - deck_thickness)
+        _translate(e, 0, 0, deck_top_z - deck_thickness, copy_geom=False)
         for e in elements
     ]
 
