@@ -13,7 +13,7 @@ from osdagbridge_core.core.utils.common import (
     KEY_LL_FOOTPATH_PRESSURE_MODE,
     KEY_LL_FOOTPATH_PRESSURE_VALUE,
     KEY_TS_NO_OF_FOOTPATHS,
-    KEY_LL_IRC_70R_BOGIE,
+    # KEY_LL_IRC_70R_BOGIE,
     KEY_LL_IRC_70R_TRACKED,
     KEY_LL_IRC_70R_WHEELED,
     # KEY_LL_IRC_AA_TRACKED,
@@ -102,8 +102,8 @@ def ch3_loads(input_dict, output_dict=None):
     #     vehicles.append("Class AA (Tracked)")
     if input_dict.get(KEY_LL_IRC_CLASS_SV):
         vehicles.append("Class SV")
-    if input_dict.get(KEY_LL_IRC_70R_BOGIE):
-        vehicles.append("Class 70R (Bogie)")
+    # if input_dict.get(KEY_LL_IRC_70R_BOGIE):
+    #     vehicles.append("Class 70R (Bogie)")
     if input_dict.get(KEY_LL_IRC_CLASS_FATIGUE):
         vehicles.append("Class Fatigue")
     
@@ -141,7 +141,7 @@ def ch3_loads(input_dict, output_dict=None):
             # (KEY_LL_IRC_AA_WHEELED, "Class AA (Wheeled)"),
             # (KEY_LL_IRC_AA_TRACKED, "Class AA (Tracked)"),
             (KEY_BL_IRC_CLASS_SV, "Class SV"),
-            (KEY_LL_IRC_70R_BOGIE, "Class 70R (Bogie)"),
+            # (KEY_LL_IRC_70R_BOGIE, "Class 70R (Bogie)"),
             (KEY_LL_IRC_CLASS_FATIGUE, "Class Fatigue"),
         )
         if output_dict.get(key)
@@ -168,7 +168,7 @@ def ch3_loads(input_dict, output_dict=None):
         # ("Class AA (Wheeled)", KEY_LL_IRC_AA_WHEELED, "aa_wheeled"),
         # ("Class AA (Tracked)", KEY_LL_IRC_AA_TRACKED, "aa_tracked"),
         ("Class SV", KEY_LL_IRC_CLASS_SV, "sv"),
-        ("Class 70R (Bogie)", KEY_LL_IRC_70R_BOGIE, "70r_wheeled"),
+        # ("Class 70R (Bogie)", KEY_LL_IRC_70R_BOGIE, "70r_wheeled"),
         ("Class Fatigue", KEY_LL_IRC_CLASS_FATIGUE, "fatigue"),
     ]
 
@@ -218,7 +218,8 @@ def ch3_loads(input_dict, output_dict=None):
             continue
         if _checked(output_dict, key):
             braking_considered = "Yes"
-            if kind in _kind_to_type and _braked is not None and key != KEY_LL_IRC_70R_BOGIE:
+            # if kind in _kind_to_type and _braked is not None and key != KEY_LL_IRC_70R_BOGIE:
+            if kind in _kind_to_type and _braked is not None:
                 braking_considered = "Yes" if _kind_to_type[kind] in _braked else "No"
             if kind == "sv":
                 braking_considered = "Yes" if _checked(output_dict, KEY_BL_IRC_CLASS_SV) else "No"
@@ -237,7 +238,8 @@ def ch3_loads(input_dict, output_dict=None):
     if not vehicle_rows:
         vehicle_rows = [["None", "---", "---", "No", "---", "---"]]
 
-    labels = {_kind_to_type.get(kind, kind): name for name, key, kind in vehicle_defs if key != KEY_LL_IRC_70R_BOGIE}
+    # labels = {_kind_to_type.get(kind, kind): name for name, key, kind in vehicle_defs if key != KEY_LL_IRC_70R_BOGIE}
+    labels = {_kind_to_type.get(kind, kind): name for name, key, kind in vehicle_defs}
     braking_rows = []
     for (case, vehicle), values in output_dict.get(KEY_LL_APPLIED_BRAKING, {}).items():
         side = {"SV-L": "left" if vehicle == "SV" else "right",
