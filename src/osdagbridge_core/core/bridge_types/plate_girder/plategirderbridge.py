@@ -2753,8 +2753,63 @@ class PlateGirderBridge:
         # below is redundant — but kept for the _frontend.set_output_value calls.
         self.store_design_results(design_results)
 
+        # Warn when intermediate stiffeners are required but user selected No
+        self._warn_if_intermediate_stiffeners_needed(design_results)
+
         # Log the girder verdict (reads it from output_dict)
         bridge_logger.girder_verdict(self.output_dict)
+
+    def _warn_if_intermediate_stiffeners_needed(
+        self, design_results: dict
+    ) -> None:
+        """Emit a warning when Thick Web is selected, the user chose Intermediate
+        Stiffener = No, but the design shows that shear buckling governs (Vcr < Vd),
+        meaning intermediate stiffeners are in fact required.
+        """
+        inp = getattr(self, "additional_inputs", {}) or {}
+        main_inp = getattr(self, "input_dict", {}) or {}
+
+        # Optimized mode determines stiffeners automatically
+        is_optimized = (
+            str(main_inp.get(KEY_DESIGN_MODE, "")).strip() == "Optimized"
+            or str(inp.get(KEY_DESIGN_MODE, "")).strip() == "Optimized"
+        )
+        if is_optimized:
+            return
+
+        per_girder = design_results.get("per_girder", {})
+        for g_name, g_data in per_girder.items():
+            if g_name.startswith("EB"):
+                continue
+            gi = g_name.replace("G", "")
+
+            # Check web type for this girder (only warn when thick web is selected)
+            web_type_key = f"{KEY_MP_GIRDER_WEB_TYPE}.G{gi}.M1"
+            web_type = str(inp.get(web_type_key) or inp.get(KEY_MP_GIRDER_WEB_TYPE) or "").strip()
+            if "thick" not in web_type.lower():
+                continue
+
+            # Check intermediate stiffener selection
+            stiff_key = f"{KEY_MP_STIFFENER_INTERMEDIATE}.G{gi}.M1"
+            flag = str(inp.get(stiff_key, "No")).strip().lower()
+            if flag == "yes":
+                continue
+
+            # Check ULS Shear check (check_id == 2)
+            checks = g_data.get("checks", [])
+            shear_chk = next((c for c in checks if c.get("check_id") == 2), None)
+            if not shear_chk:
+                continue
+
+            note = shear_chk.get("note", "")
+            if "Vcr=" in note and "governs" in note:
+                bridge_logger.warning(
+                    f"Girder {g_name}: Intermediate stiffeners are required for the "
+                    f"current design configuration. The selected configuration "
+                    f"(Intermediate Stiffener = No) is not adequate as shear buckling "
+                    f"governs. Please enable intermediate stiffeners or allow the "
+                    f"software to update the design automatically."
+                )
 
     def _design_cross_bracing_members(self) -> dict:
         """
