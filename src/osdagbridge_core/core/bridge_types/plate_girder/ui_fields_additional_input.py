@@ -492,30 +492,31 @@ _LIVE_LOAD_TAB_SCHEMA = {
                             "type": TYPE_CHECKBOX,
                             "label_first": True,
                             "default_checked": True,
+                            "enabled": False,
                         }]
                 },
+                # {
+                #     "fields":
+                #         [{
+                #             "id": KEY_LL_IRC_AA_WHEELED,
+                #             "label": "Class AA Wheeled",
+                #             "type": TYPE_CHECKBOX,
+                #             "label_first": True
+                #         }]
+                # },
+                # {
+                #     "fields":
+                #         [{
+                #             "id": KEY_LL_IRC_AA_TRACKED,
+                #             "label": "Class AA Tracked",
+                #             "type": TYPE_CHECKBOX,
+                #             "label_first": True
+                #         }]
+                # },
                 {
-                    "fields": 
+                    "fields":
                         [{
-                            "id": KEY_LL_IRC_AA_WHEELED,    
-                            "label": "Class AA Wheeled",  
-                            "type": TYPE_CHECKBOX, 
-                            "label_first": True
-                        }]
-                },
-                {
-                    "fields": 
-                        [{
-                            "id": KEY_LL_IRC_AA_TRACKED,    
-                            "label": "Class AA Tracked",  
-                            "type": TYPE_CHECKBOX, 
-                            "label_first": True
-                        }]
-                },
-                {
-                    "fields": 
-                        [{
-                            "id": KEY_LL_IRC_70R_WHEELED,   
+                            "id": KEY_LL_IRC_70R_WHEELED,
                             "label": "Class 70R Wheeled", 
                             "type": TYPE_CHECKBOX, 
                             "label_first": True
@@ -530,19 +531,19 @@ _LIVE_LOAD_TAB_SCHEMA = {
                             "label_first": True
                         }]
                 },
+                # {
+                #     "fields":
+                #         [{
+                #             "id": KEY_LL_IRC_70R_BOGIE,
+                #             "label": "Class 70R Bogie",
+                #             "type": TYPE_CHECKBOX,
+                #             "label_first": True
+                #         }]
+                # },
                 {
-                    "fields": 
+                    "fields":
                         [{
-                            "id": KEY_LL_IRC_70R_BOGIE,     
-                            "label": "Class 70R Bogie",   
-                            "type": TYPE_CHECKBOX, 
-                            "label_first": True
-                        }]
-                },
-                {
-                    "fields": 
-                        [{
-                            "id": KEY_LL_IRC_CLASS_SV,      
+                            "id": KEY_LL_IRC_CLASS_SV,
                             "label": "Class SV",          
                             "type": TYPE_CHECKBOX, 
                             "label_first": True
@@ -587,7 +588,7 @@ _LIVE_LOAD_TAB_SCHEMA = {
                         "id":              KEY_BL_IRC_CLASS_SV,
                         "label":           "Class SV",
                         "type":            TYPE_CHECKBOX,
-                        "default_checked": True,
+                        "default_checked": False,
                         "label_first":     True,
                     }]
                 },
@@ -629,7 +630,8 @@ _LIVE_LOAD_TAB_SCHEMA = {
             "title":   "Live Load (LL)",
             "text": (
                 "IRC Vehicles:\n"
-                "Live load considers standard IRC 6 vehicle classes: Class A, Class 70R (Wheeled, Tracked, Bogie), Class AA (Wheeled, Tracked), Class SV (Special Vehicle), and Fatigue vehicle. Only checked vehicles are included in the analysis.\n\n"
+                "Live load considers standard IRC 6 vehicle classes: Class A, Class 70R (Wheeled, Tracked), Class SV (Special Vehicle), and Fatigue vehicle. Class A is always included. Only checked vehicles among the rest are included in the analysis; additional vehicle classes can be added via the custom vehicle option.\n\n"
+                # "Live load considers standard IRC 6 vehicle classes: Class A, Class 70R (Wheeled, Tracked, Bogie), Class AA (Wheeled, Tracked), Class SV (Special Vehicle), and Fatigue vehicle. Only checked vehicles are included in the analysis.\n\n"
                 "Braking Load (IRC 6 Cl. 211.2):\n"
                 "Braking forces are derived from the live load. For single- or two-lane bridges: 20% of the first train of load plus 10% of succeeding trains in one lane.\nFor bridges with more than two lanes: as above for the first two lanes, plus 5% for each additional lane.\nClass SV does not require a braking load by default, but a checkbox is provided if the user wishes to include it.\n"
                 "Note: The braking load calculation is simplified and is taken as 20% of the full vehicle weight on each design lane.\n\n"
@@ -3502,19 +3504,19 @@ GENERATE_RESULTS_DEFAULTS = {
                 ],
                 "rows": [
                     ["Class A",                           EMPTY],
-                    ["Class AA Wheeled",                  EMPTY],
-                    ["Class AA Tracked",                  EMPTY],
+                    # ["Class AA Wheeled",                  EMPTY],
+                    # ["Class AA Tracked",                  EMPTY],
                     ["Class 70R Wheeled",                 EMPTY],
                     ["Class 70R Tracked",                 EMPTY],
-                    ["Class 70R Bogie",                   EMPTY],
+                    # ["Class 70R Bogie",                   EMPTY],
                     ["Class SV",                          EMPTY],
                     ["Class Fatigue",                     EMPTY],
                     ["Breaking Load : Class A",           EMPTY],
-                    ["Breaking Load : Class AA Wheeled",  EMPTY],
-                    ["Breaking Load : Class AA Tracked",  EMPTY],
+                    # ["Breaking Load : Class AA Wheeled",  EMPTY],
+                    # ["Breaking Load : Class AA Tracked",  EMPTY],
                     ["Breaking Load : Class 70R Wheeled", EMPTY],
                     ["Breaking Load : Class 70R Tracked", EMPTY],
-                    ["Breaking Load : Class 70R Bogie",   EMPTY],
+                    # ["Breaking Load : Class 70R Bogie",   EMPTY],
                     ["Breaking Load : Class SV",          EMPTY],
                     ["Breaking Load : Class Fatigue",     EMPTY],
                     ["Breaking Load : Eccentricity",      EMPTY],
