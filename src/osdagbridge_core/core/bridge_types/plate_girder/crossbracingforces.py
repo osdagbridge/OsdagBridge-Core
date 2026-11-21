@@ -1223,11 +1223,13 @@ class CrossBracingForces:
                         bridge.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_L, pair_id)] = float(chord_len)
 
             if bottom_chord_enabled and bottom_chord_des:
-                bc_details = top_details if (top_chord_des == bottom_chord_des and top_details) \
-                             else to_double_section(
-                                 bridge._query_crossbracing_section(bottom_chord_des),
-                                 **designed_profile_context(member_designs, "bottom_chord", job_profiles, pair),
-                             )
+                # Always use the bottom chord's own run: the top chord can have the
+                # same designation but a different profile (e.g. double vs single
+                # angle, or long vs short leg), which changes its properties.
+                bc_details = to_double_section(
+                    bridge._query_crossbracing_section(bottom_chord_des),
+                    **designed_profile_context(member_designs, "bottom_chord", job_profiles, pair),
+                )
                 if bc_details:
                     bridge.output_dict[make_pair_key(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, pair_id)] = bottom_chord_des
                     populate_section_properties(
