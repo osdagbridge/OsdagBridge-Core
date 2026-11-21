@@ -492,6 +492,7 @@ _LIVE_LOAD_TAB_SCHEMA = {
                             "type": TYPE_CHECKBOX,
                             "label_first": True,
                             "default_checked": True,
+                            "enabled": False,
                         }]
                 },
                 {
