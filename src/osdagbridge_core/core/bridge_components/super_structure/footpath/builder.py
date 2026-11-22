@@ -27,10 +27,10 @@ from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
 import math
 
 
-def _translate(shape, x=0.0, y=0.0, z=0.0):
+def _translate(shape, x=0.0, y=0.0, z=0.0, copy_geom=True):
     trsf = gp_Trsf()
     trsf.SetTranslation(gp_Vec(x, y, z))
-    return BRepBuilderAPI_Transform(shape, trsf, True).Shape()
+    return BRepBuilderAPI_Transform(shape, trsf, copy_geom).Shape()
 
 
 def create_footpath_slab(
@@ -139,7 +139,7 @@ def build_footpaths(
         # skew shear, as the slab itself does.
         y_centre = (y_start + y_end) / 2.0
         footpath_textures.extend(
-            _translate(element, y_centre * tan_skew, y_centre, 0)
+            _translate(element, y_centre * tan_skew, y_centre, 0, copy_geom=False)
             for element in _generate_deck_texture(
                 deck_length=span_length_L,
                 deck_width=y_end - y_start,
