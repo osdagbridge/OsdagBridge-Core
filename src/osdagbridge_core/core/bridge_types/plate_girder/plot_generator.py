@@ -54,6 +54,67 @@ DEFAULT_ELEV = 10
 DEFAULT_AZIM = -90
 
 
+class _DiagramGeometry:
+    """Map diagram ordinates to model Y or Z without moving bridge geometry.
+
+    Matplotlib coordinates are (model X, model Z, model Y). Lateral diagrams
+    need a common display gain because their ordinates share the width axis
+    with girder positions. Engineering values themselves are never rescaled.
+    """
+
+    _LATERAL_KEYS = {"Fz", "My", "Dz"}
+    _WIDTH_FRACTION = 0.20
+
+    def __init__(self, component, nodes, reference_values):
+        self.lateral = component in self._LATERAL_KEYS
+        self.gain = 1.0
+        if not self.lateral:
+            return
+
+        xs = [c[0] for c in nodes.values()]
+        zs = [c[2] for c in nodes.values()]
+        self.xmin, self.xmax = min(xs), max(xs)
+        self.zmin, self.zmax = min(zs), max(zs)
+        span = self.xmax - self.xmin
+        self.reference_width = self.zmax - self.zmin or max(0.1 * span, 1e-6)
+        peak = 0.0
+        for values in reference_values:
+            finite = np.asarray(values, dtype=float)
+            finite = finite[np.isfinite(finite)]
+            if finite.size:
+                peak = max(peak, float(np.max(np.abs(finite))))
+        if peak > 0:
+            self.gain = self._WIDTH_FRACTION * self.reference_width / peak
+
+    def __call__(self, x, z_base, offset):
+        if not self.lateral:
+            return x, z_base, offset
+        z = np.asarray(z_base) + np.asarray(offset)
+        if z.size:
+            self.zmin = min(self.zmin, float(np.min(z)))
+            self.zmax = max(self.zmax, float(np.max(z)))
+        return x, z, np.zeros_like(z)
+
+    def configure_axes(self, ax):
+        if not self.lateral:
+            return
+        span = max(self.xmax - self.xmin, self.reference_width)
+        width = max(self.zmax - self.zmin, self.reference_width)
+        ax.set_xlim(self.xmin - span * 0.05, self.xmax + span * 0.05)
+        ax.set_ylim(self.zmin - width * 0.05, self.zmax + width * 0.05)
+        ax.set_zlim(-span * 0.05, span * 0.15)
+        ax.set_zlabel("Vertical Position (m)", fontsize=10, labelpad=8)
+        # Each girder has its own zero; global width ticks are spatial, not kN/mm.
+        ax.zaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
+        ax.set_box_aspect([span, width, span * 0.20])
+
+
+def _diagram_girders(girders, edge_dist):
+    """Eligible girders for a common scale, independent of the UI selection."""
+    elements = list(girders.values())
+    return elements[1:-1] if edge_dist > 0 else elements
+
+
 def _value_plot_scale(eng_scale):
     """Clamp engineering scale factor used for diagram geometry (0 = flat diagram)."""
     try:
@@ -780,6 +841,10 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     comp_i_name, comp_j_name = FORCE_MAP[force_key]
     disp_key = FORCE_DISPLAY.get(force_key, force_key)
     girders = _find_girders(nodes, members)
+    diagram = _DiagramGeometry(force_key, nodes, (
+        _build_polyline(elems, members, nodes, comp_i_name, comp_j_name, ds)[3]
+        for elems in _diagram_girders(girders, edge_dist)
+    ))
 
     # Use muted gray/slate for standard non-active node values
     standard_gray = "#455A64"
@@ -855,7 +920,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
 
         Vy = Vy.copy()
         Vy[-1] = -Vy[-1]
-        Vy_geom = Vy * v_scale
+        Vy_geom = Vy * v_scale * diagram.gain
         if (not is_edge_beam) and Vy_geom.size:
             global_vmin = min(global_vmin, float(np.min(Vy_geom)))
             global_vmax = max(global_vmax, float(np.max(Vy_geom)))
@@ -880,19 +945,19 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
         z_step  = np.full_like(x_step, z_base)
 
         ax.plot_surface(
-            np.vstack([x_step, x_step]),
-            np.vstack([z_step, z_step]),
-            np.vstack([np.zeros_like(y_step), y_step]),
+            *diagram(np.vstack([x_step, x_step]),
+                     np.vstack([z_step, z_step]),
+                     np.vstack([np.zeros_like(y_step), y_step])),
             color=fill_color, alpha=0.25, linewidth=0, antialiased=False, zorder=2
         )
 
-        ax.plot(x_step, z_step, y_step, color=shear_color, linewidth=2.0, zorder=4)
+        ax.plot(*diagram(x_step, z_step, y_step), color=shear_color, linewidth=2.0, zorder=4)
 
         for xi, vyi_geom in zip(xs, Vy_geom):
-            ax.plot([xi, xi], [z_base, z_base], [0, vyi_geom],
+            ax.plot(*diagram([xi, xi], [z_base, z_base], [0, vyi_geom]),
                     color=shear_color, linewidth=1.2, alpha=0.7, zorder=3)
 
-        sc = ax.scatter(xs, z_arr, Vy_geom,
+        sc = ax.scatter(*diagram(xs, z_arr, Vy_geom),
                         color=shear_color, s=30, zorder=5, depthshade=False)
         _scatter_objs.append(sc)
         _scatter_data[id(sc)] = (node_ids, xs, Vy)
@@ -914,22 +979,22 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
             extreme_align_color = "black"
 
             # Max Node Highlight and Text (Highest Positive)
-            ax.plot([xs[idx_max]], [z_base], [Vy_geom[idx_max]],
+            ax.plot(*diagram([xs[idx_max]], [z_base], [Vy_geom[idx_max]]),
                     marker="o", markersize=9, color=extreme_align_color, markeredgecolor="white", markeredgewidth=1.5, 
                     linestyle="None", zorder=10, gid="max_line")
             
             # CLEAN: Removed "Max:" prefix.
-            ax.text(xs[idx_max], z_base, Vy_geom[idx_max], f" {Vy[idx_max]:.3f} kN",
+            ax.text(*diagram(xs[idx_max], z_base, Vy_geom[idx_max]), f" {Vy[idx_max]:.3f} kN",
                     color=extreme_align_color, fontsize=7, fontweight="bold", ha="left", va="bottom", zorder=11,
                     gid="max_line", bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8, edgecolor="none"))
 
             # Min Node Highlight and Text (Lowest Negative)
-            ax.plot([xs[idx_min]], [z_base], [Vy_geom[idx_min]],
+            ax.plot(*diagram([xs[idx_min]], [z_base], [Vy_geom[idx_min]]),
                     marker="o", markersize=9, color=extreme_align_color, markeredgecolor="white", markeredgewidth=1.5, 
                     linestyle="None", zorder=10, gid="min_line")
             
             # CLEAN: Removed "Min:" prefix.
-            ax.text(xs[idx_min], z_base, Vy_geom[idx_min], f" {Vy[idx_min]:.3f} kN",
+            ax.text(*diagram(xs[idx_min], z_base, Vy_geom[idx_min]), f" {Vy[idx_min]:.3f} kN",
                     color=extreme_align_color, fontsize=7, fontweight="bold", ha="right", va="top", zorder=11,
                     gid="min_line", bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8, edgecolor="none"))
 
@@ -942,7 +1007,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
                     v_align = "bottom" if j % 2 == 0 else "top"
                     h_align = "left" if i % 2 == 0 else "right" 
 
-                    ax.text(xs[j], z_base, Vy_geom[j], 
+                    ax.text(*diagram(xs[j], z_base, Vy_geom[j]),
                             f" {Vy[j]:.3f} kN", 
                             color=standard_gray, fontsize=7, ha=h_align, va=v_align, zorder=6, 
                             gid="all_vals", bbox=dict(boxstyle="round,pad=0.1", facecolor="white", alpha=0.7, edgecolor="none"))
@@ -1024,6 +1089,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     ax.zaxis.pane.set_alpha(1.0)
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
+    diagram.configure_axes(ax)
     _add_coordinate_triad(ax, nodes, eng_scale=v_scale)
     ax.set_axis_off()
 
@@ -1061,6 +1127,10 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     comp_i_name, comp_j_name = FORCE_MAP[force_key]
     disp_key = FORCE_DISPLAY.get(force_key, force_key)
     girders = _find_girders(nodes, members)
+    diagram = _DiagramGeometry(force_key, nodes, (
+        _build_polyline(elems, members, nodes, comp_i_name, comp_j_name, ds)[3]
+        for elems in _diagram_girders(girders, edge_dist)
+    ))
 
     fig = Figure(figsize=(14, 6), dpi=110, facecolor="white")
     ax = fig.add_subplot(111, projection="3d", facecolor="white")
@@ -1069,8 +1139,9 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     all_zs = [coord[2] for coord in nodes.values()]
     x_range = max(all_xs) - min(all_xs) or 1.0
     z_range = max(all_zs) - min(all_zs) or 1.0
-    ax.set_xlim(min(all_xs), max(all_xs))
-    ax.set_ylim(min(all_zs), max(all_zs))
+    if not diagram.lateral:
+        ax.set_xlim(min(all_xs), max(all_xs))
+        ax.set_ylim(min(all_zs), max(all_zs))
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
     girder_items_bmd = list(girders.items())
@@ -1149,43 +1220,43 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
         # else:
         #     moment_scale = 0.1 * abs((max(xs) - min(xs)) / val_range)
 
-        y_plot = -Mz * v_scale   # negate: positive moment plots downward
+        y_plot = -Mz * v_scale * diagram.gain  # preserve the moment drawing sign
         if y_plot.size:
             global_vmin = min(global_vmin, float(np.min(y_plot)))
             global_vmax = max(global_vmax, float(np.max(y_plot)))
 
         ax.plot_surface(
-            np.vstack([xs, xs]),
-            np.vstack([z_arr, z_arr]),
-            np.vstack([np.zeros_like(y_plot), y_plot]),
+            *diagram(np.vstack([xs, xs]),
+                     np.vstack([z_arr, z_arr]),
+                     np.vstack([np.zeros_like(y_plot), y_plot])),
             color=fill_color, alpha=0.25, linewidth=0, antialiased=False, zorder=2
         )
 
-        ax.plot(xs, z_arr, y_plot, color=moment_color, linewidth=2.0, zorder=4)
+        ax.plot(*diagram(xs, z_arr, y_plot), color=moment_color, linewidth=2.0, zorder=4)
 
         # Max line (Dashed, Tagged for toggling)
         idx_max = int(np.argmax(Mz))
-        ax.plot([xs[idx_max], xs[idx_max]], [z_base, z_base], [0, y_plot[idx_max]],
+        ax.plot(*diagram([xs[idx_max], xs[idx_max]], [z_base, z_base], [0, y_plot[idx_max]]),
                 color="#FF4136", linewidth=1.5, linestyle="--", zorder=3, gid="max_line")
         # Bold Dark Grey Text
-        ax.text(xs[idx_max], z_base, y_plot[idx_max],
+        ax.text(*diagram(xs[idx_max], z_base, y_plot[idx_max]),
                 f" {Mz[idx_max]:.2f} kNm", color="#333333", fontsize=8, fontweight="bold", zorder=6, gid="max_line",
                 bbox=dict(facecolor='white', edgecolor='none', alpha=0.85, pad=1.0))
 
         # Min line (Dashed, Tagged for toggling)
         idx_min = int(np.argmin(Mz))
-        ax.plot([xs[idx_min], xs[idx_min]], [z_base, z_base], [0, y_plot[idx_min]],
+        ax.plot(*diagram([xs[idx_min], xs[idx_min]], [z_base, z_base], [0, y_plot[idx_min]]),
                 color="#0074D9", linewidth=1.5, linestyle="--", zorder=3, gid="min_line")
-        ax.text(xs[idx_min], z_base, y_plot[idx_min],
+        ax.text(*diagram(xs[idx_min], z_base, y_plot[idx_min]),
                 f" {Mz[idx_min]:.2f} kNm", color="#333333", fontsize=8, fontweight="bold", zorder=6, gid="min_line",
                 bbox=dict(facecolor='white', edgecolor='none', alpha=0.85, pad=1.0))
 
         # 'All' values annotations (Slightly lighter grey, Tagged for toggling)
         for xi, yi, mzi in zip(xs, y_plot, Mz):
-            ax.text(xi, z_base, yi, f" {mzi:.2f} kNm", color="#555555", fontsize=7, zorder=5, gid="all_vals")
+            ax.text(*diagram(xi, z_base, yi), f" {mzi:.2f} kNm", color="#555555", fontsize=7, zorder=5, gid="all_vals")
 
         # Slicing [1:-1] strips away the first and last dots so the supports stay clean!
-        sc = ax.scatter(xs[1:-1], z_arr[1:-1], y_plot[1:-1],
+        sc = ax.scatter(*diagram(xs[1:-1], z_arr[1:-1], y_plot[1:-1]),
                         color=moment_color, s=30, zorder=5, depthshade=False)
         _scatter_objs.append(sc)
         # CRITICAL: You must slice the hover data too, or the tooltip will show the wrong node!
@@ -1275,6 +1346,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     # Force the 3D plot to use the maximum available canvas space
     # Dedicate 18% of the right side purely to the massive axis labels.
     # This naturally shoves the 3D bridge perfectly into the center of the screen!
+    diagram.configure_axes(ax)
     _add_coordinate_triad(ax, nodes, eng_scale=v_scale)
     ax.set_axis_off()
     
@@ -1530,6 +1602,11 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
     else:
         print(f"[DEBUG] 🚨 CRITICAL: Target '{target_ds_key}' not found in dataset!")
 
+    diagram = _DiagramGeometry(disp_key, nodes, (
+        [disp_dict.get(str(n), 0.0) for e in elems for n in members[e]]
+        for elems in _diagram_girders(girders, edge_dist)
+    ))
+
     # =========================================================
     # PHASE 2: PLOTTING THE DIAGRAM
     # =========================================================
@@ -1572,16 +1649,16 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
                 color="black", fontsize=13, ha="right", va="center",
                 zorder=dynamic_zorder, gid="girder_labels")
 
-        y_plot = vals * v_scale
+        y_plot = vals * v_scale * diagram.gain
         if y_plot.size:
             global_vmin = min(global_vmin, float(np.min(y_plot)))
             global_vmax = max(global_vmax, float(np.max(y_plot)))
 
         # Draw thick deflection line (NO plot_surface fill!)
-        ax.plot(xs, z_arr, y_plot, color=defl_color, linewidth=2.5, zorder=4)
+        ax.plot(*diagram(xs, z_arr, y_plot), color=defl_color, linewidth=2.5, zorder=4)
 
         # Draw Nodes (Pure Black)
-        sc = ax.scatter(xs[1:-1], z_arr[1:-1], y_plot[1:-1], color="black", s=30, zorder=5, depthshade=False)
+        sc = ax.scatter(*diagram(xs[1:-1], z_arr[1:-1], y_plot[1:-1]), color="black", s=30, zorder=5, depthshade=False)
         _scatter_objs.append(sc)
         _scatter_data[id(sc)] = (node_list[1:-1], xs[1:-1], vals[1:-1])
         if not is_edge_beam and len(vals) > 0:
@@ -1606,7 +1683,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
                     v_align = "bottom" if j % 2 == 0 else "top"
                     h_align = "left" if i % 2 == 0 else "right" 
 
-                    ax.text(xs[j], z_base, y_plot[j], 
+                    ax.text(*diagram(xs[j], z_base, y_plot[j]),
                             f" {vals[j]:.3f} mm", 
                             color="#455A64", 
                             fontsize=7, 
@@ -1617,16 +1694,16 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
                             bbox=dict(boxstyle="round,pad=0.1", facecolor="white", alpha=0.7, edgecolor="none"))
                     
             # 1. Add gid="max_line" to the dotted line
-            ax.plot([xs[idx_max], xs[idx_max]], [z_base, z_base], [0, y_plot[idx_max]],
+            ax.plot(*diagram([xs[idx_max], xs[idx_max]], [z_base, z_base], [0, y_plot[idx_max]]),
                     color=defl_color, linewidth=1.5, linestyle="--", zorder=3, gid="max_line")
             
             # 2. Add gid="max_line" to the text label
-            ax.text(xs[idx_max], z_base, y_plot[idx_max],
+            ax.text(*diagram(xs[idx_max], z_base, y_plot[idx_max]),
                     f" {vals[idx_max]:.3f} mm", color="#4A4A4A", fontsize=7, fontweight="bold", zorder=6, gid="max_line")
             # 3. Add gid="min_line" to the dotted line
-            ax.plot([xs[idx_min], xs[idx_min]], [z_base, z_base], [0, y_plot[idx_min]],
+            ax.plot(*diagram([xs[idx_min], xs[idx_min]], [z_base, z_base], [0, y_plot[idx_min]]),
                     color=defl_color, linewidth=1.5, linestyle="--", zorder=3, gid="min_line")
-            ax.text(xs[idx_min], z_base, y_plot[idx_min],
+            ax.text(*diagram(xs[idx_min], z_base, y_plot[idx_min]),
                     f" {vals[idx_min]:.3f} mm", color="#4A4A4A", fontsize=7, fontweight="bold", zorder=6, gid="min_line")
         
         
@@ -1710,6 +1787,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
         pane.set_alpha(1.0)
         
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
+    diagram.configure_axes(ax)
     _add_coordinate_triad(ax, nodes, eng_scale=v_scale)
     ax.set_axis_off()
     
