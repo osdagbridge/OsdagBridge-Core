@@ -184,8 +184,11 @@ from osdagbridge_core.core.utils.common import (
     KEY_SD_SHEAR_VCR,
     KEY_SD_SHEAR_VU,
     KEY_SD_STIFF_END_COUNT,
+    KEY_SD_STIFF_END_THICK_REQ,
     KEY_SD_STIFF_INT_SPACING,
+    KEY_SD_STIFF_INT_SPACING_REQ,
     KEY_SD_STIFF_INT_THICK,
+    KEY_SD_STIFF_INT_THICK_REQ,
     KEY_SD_STIFF_LONG,
     KEY_SD_STIFF_METHOD,
     KEY_SD_STRESS_STEEL,
@@ -480,18 +483,24 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None, girder_details=None
         if _is_custom:
             for target, source in (
                 (KEY_SD_STIFF_METHOD, KEY_MP_STIFFENER_DESIGN_METHOD),
-                (KEY_SD_STIFF_INT_THICK, KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS),
-                (KEY_SD_STIFF_INT_SPACING, KEY_MP_STIFFENER_INTERMEDIATE_SPACING),
+                # "NA" when this girder has no intermediate stiffeners (its thickness stays seeded).
+                (KEY_SD_STIFF_INT_THICK, "stiff_intermediate_thickness"),
+                (KEY_SD_STIFF_INT_SPACING, "stiff_intermediate_spacing"),
                 (KEY_SD_STIFF_END_COUNT, KEY_MP_STIFFENER_NO_BEARING_STIFFENERS),
                 (KEY_SD_STIFF_LONG, KEY_MP_STIFFENER_LONGITUDINAL),
             ):
                 if source in girder_output:
                     girder_output.setdefault(target, girder_output[source])
+        # Minimum required sizes computed by the designer for this girder.
+        girder_output.update(girder_details.get(girder_output["_report_girder"], {}))
         t57_items = [
             ["Shear Buckling Design Method", str(_render_value(girder_output, KEY_SD_STIFF_METHOD)).replace("_", " ").title()],
-            ["Intermediate Stiffener Thickness (mm)", "N/A" if girder in intermediate_disabled else _render_value(girder_output, KEY_SD_STIFF_INT_THICK)],
-            ["Intermediate Stiffener Spacing (mm)", "N/A" if girder in intermediate_disabled else _render_value(girder_output, KEY_SD_STIFF_INT_SPACING)],
-            ["Bearing Stiffener Thickness (mm)", _render_value(girder_output, KEY_MP_STIFFENER_BEARING_THICKNESS)],
+            ["Provided Intermediate Stiffener Thickness (mm)", _render_value(girder_output, KEY_SD_STIFF_INT_THICK)],
+            ["Required Intermediate Stiffener Thickness (mm)", _render_value(girder_output, KEY_SD_STIFF_INT_THICK_REQ)],
+            ["Provided Intermediate Stiffener Spacing (mm)", _render_value(girder_output, KEY_SD_STIFF_INT_SPACING)],
+            ["Required Intermediate Stiffener Spacing (mm)", _render_value(girder_output, KEY_SD_STIFF_INT_SPACING_REQ)],
+            ["Provided Bearing Stiffener Thickness (mm)", _render_value(girder_output, KEY_MP_STIFFENER_BEARING_THICKNESS)],
+            ["Required Bearing Stiffener Thickness (mm)", _render_value(girder_output, KEY_SD_STIFF_END_THICK_REQ)],
             ["No. of Bearing Stiffeners (per face of web)", _render_value(girder_output, KEY_SD_STIFF_END_COUNT)],
             ["Longitudinal Stiffeners", _render_value(girder_output, KEY_SD_STIFF_LONG)],
         ]
