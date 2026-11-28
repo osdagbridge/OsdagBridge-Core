@@ -536,6 +536,9 @@ class BridgeConfig:
         carriageway = deck.carriageway_width
         n_girders = geom.n_l
         edge_dist = geom.edge_dist
+        # geom.n_l counts the deck-edge lines too; setu runs report the main girders (bridge._girder_count()).
+        if bridge.input_dict.get(KEY_ANALYSIS_ENGINE) == ENGINE_SETU:
+            n_girders = bridge._girder_count()
 
         # Cross-bracing spacing drives the lateral unbraced length for LTB.
         cb_spacing = float(_cbv(inp, KEY_MP_CB_SPACING) or
@@ -748,12 +751,18 @@ class DemandEnvelope:
     Nsc: int = field(kw_only=True)
     governing_combination: str = "ULS Combination I"
     location: str = "midspan"
+    shear_combination: str = ""                           # combination behind Vu (governing_combination is Mu's)
+    shear_location: str = ""
     member: str = ""
     source: str = "manual"
     M_sls_kNm: float = 0.0
     V_sls_kN: float = 0.0
     Vr_kN: float = 0.0                                    # Cl.606.4.2 — LL shear range (Vmax_LL - Vmin_LL)
     M_girder_sw_kNm: float = 0.0                          # Construction stage 1: girder self-weight only (bare steel)
+    # M_sls_kNm split by the section that carries it on an unpropped deck: {"steel", "long_term", "short_term"} (kN·m).
+    # Used for either engine when the analysis supplies the split (setu does; ospgrillage's dead/live cases are not split by
+    # stage yet); None keeps the whole moment on the short-term composite section, as before.
+    M_sls_stages_kNm: Optional[dict] = None
     # LC type — governs which checks are applicable (see DCREngine._*_TYPES sets).
     # "" = aggregate envelope (all applicable checks run); typed = per-LC run with scoped checks.
     # Values: "ULS" | "SLS_frequent" | "SLS" | "DL_LL" | "live_only" | "individual" | ""
@@ -1263,9 +1272,14 @@ class IRC22CapacityCalculator:
         M_sls_kNm: float,
         V_sls_kN: float,
         comp_props: dict = None,
+        stages_kNm: Optional[dict] = None,
     ) -> dict:
         """
         IRC 22:2015 Cl.604.3.1 — Actual SLS stress calculation and limit checks.
+
+        With ``stages_kNm`` ({"steel", "long_term", "short_term"}) each part of the moment acts on the section that
+        carries it on an unpropped deck (Cl.604.3: bare steel, long-term composite n = Es/(0.5 Ecm), short-term composite
+        n = Es/Ecm) and the stresses are added; without it the whole moment acts on the short-term composite section.
 
         Uses the SHORT-TERM composite section (modular ratio n = Es/Ecm) as required
         for serviceability checks under live loading.
@@ -1295,31 +1309,38 @@ class IRC22CapacityCalculator:
         I_comp     = short[KEY_COMP_I]
         y_top      = short[KEY_COMP_Y_TOP]      # from top of slab to composite NA (compression arm)
         y_bot      = short[KEY_COMP_Y_BOT]      # from composite NA to bottom of steel (tension arm)
-        y_comp_bot = short[KEY_COMP_Y_FROM_BOT]
 
-        M_Nmm = M_sls_kNm * 1e6
         V_N   = V_sls_kN  * 1e3
-        n_ratio = short[KEY_COMP_N]     # short-term modular ratio Es/Ecm
 
-        # ── Concrete compressive stress at top of slab ────────────────────────
-        # I_comp is the steel-equivalent (transformed) section; divide by n to
-        # convert the fictitious steel stress at the slab top to actual concrete stress.
-        sigma_c = M_Nmm * y_top / (n_ratio * I_comp)
-
-        # ── Rebar tensile stress at bottom rebar centroid ─────────────────────
         # Rebar centroid from bottom of slab = cover_bot + approx half-bar-dia (6 mm)
         y_rebar_from_slab_bot = slab.cover_bot + 6.0
         # Position from bottom of steel: D + h_haunch + ds - y_rebar_from_slab_bot
         y_rebar_from_steel_bot = sec.D + slab.haunch_depth + slab.thickness - y_rebar_from_slab_bot
-        y_rebar_from_NA        = y_rebar_from_steel_bot - y_comp_bot   # +ve → below NA (tension)
-        sigma_rebar = max(M_Nmm * y_rebar_from_NA / I_comp, 0.0)       # tension = positive
 
-        # ── Structural steel bending stresses ─────────────────────────────────
-        # y of top-steel-fibre from bottom of steel
-        y_steel_top_from_bot_steel = sec.D
-        y_steel_top_from_NA        = y_steel_top_from_bot_steel - y_comp_bot  # −ve → above NA (comp)
-        fbc = M_Nmm * abs(y_steel_top_from_NA) / I_comp   # compressive stress at top steel fibre
-        fbt = M_Nmm * y_bot / I_comp                        # tensile stress at bottom steel fibre
+        def fibre_stresses(M_kNm, props):
+            """Signed stresses (MPa) from M_kNm on one composite section: concrete at the slab top (I is the
+            steel-equivalent section, so divide by n), rebar centroid (tension +ve), steel top fibre and
+            bottom fibre (both as M x distance from the composite NA / I)."""
+            M_Nmm, I, y_na = M_kNm * 1e6, props[KEY_COMP_I], props[KEY_COMP_Y_FROM_BOT]
+            return (M_Nmm * props[KEY_COMP_Y_TOP] / (props[KEY_COMP_N] * I),
+                    M_Nmm * (y_rebar_from_steel_bot - y_na) / I,
+                    M_Nmm * (sec.D - y_na) / I,
+                    M_Nmm * y_na / I)
+
+        if stages_kNm:
+            # Unpropped deck, stage by stage: the steel part on the bare steel section, then the
+            # long-term and short-term composite parts, each signed, then added.
+            steel_Nmm = stages_kNm["steel"] * 1e6
+            parts = [(0.0, 0.0, steel_Nmm * (sec.D - sec.y_cg_from_bot) / sec.Iz_steel,
+                      steel_Nmm * sec.y_cg_from_bot / sec.Iz_steel)]
+            parts += [fibre_stresses(stages_kNm[part], props)
+                      for part, props in (("long_term", comp_props["long_term"]), ("short_term", short))]
+            sigma_c, sigma_rebar, f_top, fbt = (sum(p) for p in zip(*parts))
+        else:
+            # Whole moment on the short-term composite section.
+            sigma_c, sigma_rebar, f_top, fbt = fibre_stresses(M_sls_kNm, short)
+        sigma_rebar = max(sigma_rebar, 0.0)   # tension = positive
+        fbc = abs(f_top)                      # stress at top steel fibre (M_sls > 0 here, so the original M·|y|/I)
 
         # ── Average web shear stress ───────────────────────────────────────────
         tau_b = V_N / sec.Aw if sec.Aw > 0.0 else 0.0
@@ -2051,6 +2072,7 @@ class IRC22CapacityCalculator:
         Vr_kN: float = 0.0,              # Cl.606.4.2 — LL shear range for fatigue stud spacing
         provided_stud_spacing_mm: float = None,
         lc_name: Optional[str] = None,   # per-load-case run → stiffener combined checks use only this LC
+        M_sls_stages_kNm: Optional[dict] = None,   # M_sls split steel / long-term / short-term, when the analysis supplies it
     ) -> CapacityResults:
         results = CapacityResults()
         results.source = "IRC22_2014"
@@ -2236,6 +2258,7 @@ class IRC22CapacityCalculator:
             M_sls_kNm=M_sls_kNm,
             V_sls_kN=V_sls_kN,
             comp_props=comp_props,
+            stages_kNm=M_sls_stages_kNm,
         )
         results.details["sls_actual_stresses"] = sls_actual
         if not sls_actual.get("skipped"):                    
@@ -3509,6 +3532,7 @@ def _compute_per_lc_dcr(
             V_sls_kN=lc_d.V_sls_kN,
             Vr_kN=lc_d.Vr_kN,
             lc_name=str(lc_name),
+            M_sls_stages_kNm=lc_d.M_sls_stages_kNm,
         )
         lc_engine = DCREngine(lc_d, lc_cap)
         lc_engine.run_all_checks()
@@ -3742,6 +3766,7 @@ def run_design_check(
             M_sls_kNm=g_demand.M_sls_kNm,
             V_sls_kN=g_demand.V_sls_kN,
             Vr_kN=g_demand.Vr_kN,
+            M_sls_stages_kNm=g_demand.M_sls_stages_kNm,
         )
         g_engine = DCREngine(g_demand, g_cap)
         g_engine.run_all_checks()
@@ -3772,6 +3797,9 @@ def run_design_check(
                 "stress_range_MPa"    : g_demand.stress_range_MPa,
                 "shear_range_MPa"     : g_demand.shear_range_MPa,
                 "governing_combination": g_demand.governing_combination,
+                "location"            : g_demand.location,
+                "shear_combination"   : g_demand.shear_combination,
+                "shear_location"      : g_demand.shear_location,
                 "Vr_kN"               : g_demand.Vr_kN,
                 "member"              : g_demand.member,
                 "source"              : g_demand.source,

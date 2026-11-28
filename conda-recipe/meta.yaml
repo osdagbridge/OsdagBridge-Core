@@ -37,6 +37,7 @@ requirements:
     - xarray
     - ifcopenshell
     - plotly
+    - setu
 
 test:
   imports:

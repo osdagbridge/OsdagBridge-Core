@@ -49,6 +49,7 @@ from osdagbridge_core.core.utils.common import (
     KEY_TL_BRIDGE_TEMP_MIN,
     KEY_TL_HIGHEST_MAX_TEMP,
     KEY_TL_LOWEST_MIN_TEMP,
+    KEY_TL_SNOWBOUND,
     KEY_TL_TEMP_FALL,
     KEY_TL_TEMP_RISE,
     KEY_WC_LD_LANE_TABLE_COUNT,
@@ -85,6 +86,18 @@ from osdagbridge_core.core.reports.report_utils import (
     _tex, _render_value, render_report_table,
     render_parameter_value_table
 )
+
+def _analysis_notes(output_dict):
+    """What the setu engine assumed or did not follow, stated in the report; empty for ospgrillage."""
+    notes = (output_dict or {}).get("setu_simplifications")
+    if notes is None:
+        return ""
+    items = [
+        "Wind site defaults (terrain category 2, 100-year return period, road level 10 m, pier height 10 m, k3 = 1.0, k4 = 1.0, cross slope 0 deg) and construction load defaults (shuttering 0 kN/m2, construction live load 0 kN/m2) are placeholders that the engineer must set for the site.",
+        *(f"{note}." for note in notes),
+    ]
+    return "\n\\vspace{1em}\n\\noindent\\textbf{Analysis notes (setu engine)}\n\\begin{itemize}\n" + "\n".join(f"\\item {item}" for item in items) + "\n\\end{itemize}\n"
+
 
 def ch3_loads(input_dict, output_dict=None):
     output_dict = output_dict if output_dict is not None else {}
@@ -278,8 +291,9 @@ def ch3_loads(input_dict, output_dict=None):
         ])
 
     # Vz / Pz — prefer stored computed values; fall back to IRC6 Table 12
-    vz_val = input_dict.get(KEY_WL_HOURLY_MEAN_WIND)
-    pz_val = input_dict.get(KEY_WL_HOURLY_WIND_PRESSURE)
+    # the engine's own values first (setu: IRC 6 cl. 209 as amended by Amendment 10), then the dialog's
+    vz_val = output_dict.get(KEY_WL_HOURLY_MEAN_WIND) or input_dict.get(KEY_WL_HOURLY_MEAN_WIND)
+    pz_val = output_dict.get(KEY_WL_HOURLY_WIND_PRESSURE) or input_dict.get(KEY_WL_HOURLY_WIND_PRESSURE)
     if not vz_val or not pz_val:
         try:
             _vb  = input_dict.get(KEY_WL_BASIC_WIND_SPEED) or input_dict.get('wind_speed')
@@ -353,7 +367,7 @@ def ch3_loads(input_dict, output_dict=None):
                      or input_dict.get('shade_temp_min'))
             if _tmax and _tmin:
                 _res    = IRC6_2017.cl_215_2_effective_bridge_temperature(
-                              float(_tmax), float(_tmin), 'metallic', False)
+                              float(_tmax), float(_tmin), 'metallic', bool(input_dict.get(KEY_TL_SNOWBOUND)))
                 _bt_min = _res.get('T_min', 0)
                 _bt_max = _res.get('T_max', 0)
                 _mean   = (_bt_max + _bt_min) / 2.0
@@ -520,6 +534,6 @@ WL denotes transverse, longitudinal and vertical wind on the structure.
 Wind on live load is added at the WL factor when both WL and LL are present.
 
 \noindent\textit{Note: Saved selections retain their original IDs and expressions. A listed term does not confirm that its load case was applied in the analysis.}
-"""
+""" + _analysis_notes(output_dict)
 
 
