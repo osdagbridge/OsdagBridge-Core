@@ -481,9 +481,9 @@ class BridgeConfigurationSolver:
             # =========================================================
             # Default dimensions based on D_empirical formulas
             b_f = B_top if B_top > 0 else ceil_to_size_increment(0.3 * D)  # Eq. 3.2
-            t_f = t_f_top if t_f_top > 0 else b_f / 24.0  # Eq. 3.3
+            t_f = t_f_top if t_f_top > 0 else b_f / 21.0  # Eq. 3.3
             d_web = D - 2 * t_f  # Eq. 3.4
-            tw = t_w if t_w > 0 else d_web / 200.0  # Eq. 3.5
+            tw = t_w if t_w > 0 else d_web / 100.0  # Eq. 3.5 — d/100 provides shear margin
 
             # Strong-axis + area properties come from the shared equation source
             # (unit-agnostic; here everything is in metres). Symmetric section =
@@ -537,10 +537,10 @@ class BridgeConfigurationSolver:
             # =========================================================
             bf_top = B_top if B_top > 0 else ceil_to_size_increment(0.3 * D)
             bf_bot = B_bot if B_bot > 0 else ceil_to_size_increment(0.35 * D)
-            tf_top = t_f_top if t_f_top > 0 else bf_top / 24.0
-            tf_bot = t_f_bot if t_f_bot > 0 else bf_bot / 24.0
+            tf_top = t_f_top if t_f_top > 0 else bf_top / 21.0
+            tf_bot = t_f_bot if t_f_bot > 0 else bf_bot / 21.0
             d_web = D - tf_top - tf_bot
-            tw = t_w if t_w > 0 else d_web / 200.0
+            tw = t_w if t_w > 0 else d_web / 100.0
 
             # Strong-axis + area properties come from the shared equation source
             # (unit-agnostic; here everything is in metres).
