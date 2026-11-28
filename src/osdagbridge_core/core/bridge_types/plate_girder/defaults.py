@@ -632,10 +632,18 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
     # --- Girder selector key + default segment table: only a .G{n} suffix ---
     for girder_idx in range(1, count + 1):
         seg_table_key = f"{KEY_MP_GD_SEGMENT_TABLE}.G{girder_idx}"
-        if seg_table_key not in working_input_dict:
+        segments = working_input_dict.get(seg_table_key)
+        if not segments:
             working_input_dict[seg_table_key] = [
                 {"id": f"G{girder_idx}M1", "start": 0.0, "end": span}
             ]
+        else:
+            # Fit an existing table to the current span, so a span change does not
+            # leave the girder at its old length: drop members starting past the
+            # span and end the last member at the span.
+            segments = [dict(s) for s in segments if float(s["start"]) < span] or [dict(segments[0])]
+            segments[-1]["end"] = span
+            working_input_dict[seg_table_key] = segments
 
     # --- Per-girder/member section-input defaults: <base_key>.G{n}.M{m} ---
     # KEY_MP_GD_MEMBER_ID lives under "member_properties.member_id" (not
