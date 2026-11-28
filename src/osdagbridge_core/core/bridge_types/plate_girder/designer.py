@@ -333,6 +333,9 @@ class StiffenerConfig:
     # Set c_mm > 0 to enable intermediate stiffener checks; bs_R_kN > 0 for bearing stiffener checks.
 
     # ── Intermediate transverse stiffener (Cl.509.7.2 / IS 800 Cl.8.7.2) ─────────────
+    # False = user chose Intermediate Stiffener = No (Custom mode): the web is checked
+    # as unstiffened (Kv = 5.35) and no stiffener spacing is worked out for it.
+    intermediate_enabled: bool = True
     c_mm: float = 0.0           # panel spacing between adjacent stiffeners (mm)
     tq_mm: float = 0.0          # stiffener plate thickness (mm)
     H_mm: float = 0.0           # outstanding leg height (mm)
@@ -672,10 +675,17 @@ class BridgeConfig:
                 f"expected one of {list(_shear_method_map)}."
             )
 
+        # Intermediate stiffener on/off: the user's Yes/No in Custom mode; always on in
+        # Optimized mode, where the software sizes them. When off, spacing/thickness/
+        # outstand are zeroed so values left over in those fields are ignored.
+        int_stiff_on = (str(inp.get(KEY_DESIGN_MODE, "Optimized")).strip() == "Optimized"
+                        or str(_member_value(KEY_MP_STIFFENER_INTERMEDIATE)).strip().lower() == "yes")
+
         stiffener = StiffenerConfig(
-            c_mm        = _optfloat(KEY_MP_STIFFENER_INTERMEDIATE_SPACING),
-            tq_mm       = _optfloat(KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS),
-            H_mm        = _optfloat(KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND),
+            intermediate_enabled = int_stiff_on,
+            c_mm        = _optfloat(KEY_MP_STIFFENER_INTERMEDIATE_SPACING)   if int_stiff_on else 0.0,
+            tq_mm       = _optfloat(KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS) if int_stiff_on else 0.0,
+            H_mm        = _optfloat(KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND)  if int_stiff_on else 0.0,
             # No sidedness input yet — intermediate stiffeners are taken as two-sided.
             # TODO: wire to a sidedness key once added to the Stiffener Details tab.
             n_sides     = 2,
@@ -2088,7 +2098,11 @@ class IRC22CapacityCalculator:
         #     (guidance mode again) and overwrite with the same result — no harm done.
         _c_mm_buck: float = 0.0
         if self.cfg.stiffener is not None:
-            if self.cfg.stiffener.c_mm > 0:
+            if not self.cfg.stiffener.intermediate_enabled:
+                # Intermediate Stiffener = No: c stays 0 (unstiffened web). The marker
+                # tells DCREngine, which has no access to cfg.
+                results.details["intermediate_stiffener"] = {"skipped": True, "user_disabled": True}
+            elif self.cfg.stiffener.c_mm > 0:
                 _c_mm_buck = self.cfg.stiffener.c_mm
             else:
                 _is_guid = self.compute_intermediate_stiffener()
@@ -2272,7 +2286,8 @@ class IRC22CapacityCalculator:
 
         # 18. Intermediate stiffener checks (IRC 24-2010 Cl.509.7.2 / IS 800 Cl.8.7.2).
         # Opt-in by setting cfg.stiffener to any StiffenerConfig. Runs guidance when c/tq/H not given.
-        if self.cfg.stiffener is not None:
+        # Skipped when the user switched intermediate stiffeners off (marker set in step 4b).
+        if self.cfg.stiffener is not None and self.cfg.stiffener.intermediate_enabled:
             # Vu_kN = design shear for the stiffener force Fq = V − Vcr (Cl.509.7.2.5)
             is_res = self.compute_intermediate_stiffener(V_kN=Vu_kN, lc_name=lc_name)
             results.details["intermediate_stiffener"] = is_res
@@ -2482,6 +2497,10 @@ class DCREngine:
                                f"Kv={c.Kv:.3f}, λw={c.lambda_w:.3f}, τb={c.tau_b_buck_MPa:.1f} MPa")
         else:
             _shear_note = f"Vd={c.Vd_kN:.1f} kN plastic governs; Av={c.Av_mm2:.0f} mm²"
+        # The Shear card shows this note, so the "no intermediate stiffeners" caveat goes here.
+        if c.details.get("intermediate_stiffener", {}).get("user_disabled"):
+            _shear_note += ("; no intermediate stiffeners (Intermediate Stiffener = No), "
+                            "web checked as unstiffened")
         self._add_check(2, "ULS Shear", "Cl.603.3.3.2",
                         d.Vu_kN, _Vd_shear_check, "kN",
                         note=_shear_note, governing_method=c.shear_method)
@@ -2666,7 +2685,15 @@ class DCREngine:
         # ── IRC 24-2010 STIFFENER CHECKS (Cl.509.7 / IS 800 Cl.8.7) ─────────────────
         # Intermediate transverse stiffener
         is_det = c.details.get("intermediate_stiffener", {"skipped": True})
-        if is_det and not is_det.get("skipped"):
+        if is_det and is_det.get("user_disabled"):
+            # Intermediate Stiffener = No: one row that says so. FAIL (Vu above Vcr of the
+            # unstiffened web) means intermediate stiffeners are required.
+            self._add_check(20, "Int.Stiff: Not Provided", "Cl.603.3.3.2",
+                             d.Vu_kN, c.Vcr_kN, "kN",
+                             note=("Intermediate Stiffener = No: web checked as unstiffened "
+                                   "(Kv=5.35, stiffeners at supports only). On FAIL, intermediate "
+                                   "stiffeners are required: enable them or thicken the web."))
+        elif is_det and not is_det.get("skipped"):
             if "design_guidance" not in is_det:
                 raise KeyError("'design_guidance' key missing from intermediate_stiffener details.")
             if is_det["design_guidance"]:
