@@ -970,6 +970,48 @@ class PlateGirderCADGenerator:
         
         supports = supports_tri + supports_cyl
 
+        # CENTRE THE CROSS-SECTION OVER THE GIRDERS
+        #
+        # The deck (carriageway + crash barriers) is built centred on Y = 0 with
+        # the footpaths outboard of its edges, while the girders are centred on
+        # Y = 0 with equal overhangs across the overall bridge width (as in the
+        # analysis and the IFC export).  With a footpath on one side only the
+        # overall section is off-centre, so move the deck-level parts to put its
+        # centre on Y = 0.  The move follows the skew so the parts stay on the
+        # girders' end lines, and only changes the shapes' location (no copy).
+        deck_half = deck_out["total_deck_width"] / 2.0
+        section_ys = [-deck_half, deck_half] + [
+            y for y_range in footpath_out["footpath_y_ranges"] for y in y_range
+        ]
+        section_offset_y = -(min(section_ys) + max(section_ys)) / 2.0
+
+        if abs(section_offset_y) > 1e-9:
+            from OCC.Core.TopLoc import TopLoc_Location
+
+            shift = gp_Trsf()
+            shift.SetTranslation(gp_Vec(
+                _calculate_skew_offset(section_offset_y), section_offset_y, 0
+            ))
+            shift_location = TopLoc_Location(shift)
+
+            def _shift(shapes):
+                if isinstance(shapes, (list, tuple)):
+                    return [_shift(s) for s in shapes]
+                return shapes.Moved(shift_location)
+
+            for _out, _key in (
+                (deck_out, "deck_slab"),
+                (deck_out, "deck_textures"),
+                (footpath_out, "footpath_slabs"),
+                (footpath_out, "footpath_textures"),
+            ):
+                _out[_key] = _shift(_out[_key])
+            crash_barriers = _shift(crash_barriers)
+            crash_barrier_w_beams = _shift(crash_barrier_w_beams)
+            median_barriers = _shift(median_barriers)
+            median_w_beams = _shift(median_w_beams)
+            railings = _shift(railings)
+
         # RETURN ALL GENERATED COMPONENTS
         
         return {
